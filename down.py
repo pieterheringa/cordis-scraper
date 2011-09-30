@@ -29,15 +29,24 @@ def theme_worker():
         theme = q.get()
         logging.info('THEME: %s', repr(theme))
 
+        url = THEME_URL % {'theme': theme}
         try:
-            url = THEME_URL % {'theme': theme}
-            r = requests.get(url)
-            if r.status_code != 200:
-                logging.error("Request failed for url: %s", url)
-                continue
-            doc = BeautifulSoup(r.content)
-            for proj in get_projects(doc):
-                project_queue.put((theme, proj))
+            while True:
+                r = requests.get(url)
+                if r.status_code != 200:
+                    logging.error("Request failed for url: %s", url)
+                    continue
+                doc = BeautifulSoup(r.content)
+                for proj in get_projects(doc):
+                    project_queue.put((theme, proj))
+                try:
+                    next_ = dict(doc.find(
+                            text="Next 20 projects &raquo;").parent.attrs
+                        )['href'][2:]
+                except AttributeError:
+                    break
+                url = "http://cordis.europa.eu" + next_
+
         except:
             logging.error("THEME_WORKER: Error for url: %s", url)
         finally:
@@ -89,6 +98,6 @@ if __name__ == "__main__":
     project_queue.join()
     out_queue.put(StopIteration)
 
-    for out in out_queue:
-        print out
+    for i, out in enumerate(out_queue):
+        print i, out
 

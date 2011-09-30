@@ -83,47 +83,48 @@ def project_worker():
             logging.info('PROJECT: %s: %s' % (theme, url))
 
             if key in project_cache:
-                project = project_cache[key]
+                page = project_cache[key]
             else:
                 r = requests.get(url)
                 if not r.ok:
                    logging.error("Request failed for url: %s", url)
                    continue
+                page = r.content
+                project_cache[key] = page
 
-                doc = BeautifulSoup(r.content)
-                content = doc.find(id="textcontent")
-                info = content.find(text="Project details").findParent("table").find(text="Project Acronym:").findParent("td")
-                contact_info = content.find(text="Coordinator").findParent("table").find(text="Contact Person:").findParent("td")
-                contact_info_tokens = contact_info.text.split("<br />")
-                organization_info = content.find(text="Coordinator").findParent("table").find(text="Organisation:").findParent("td")
-                partners_info = content.find(text="Participants").findParent("table")
-                partners_list = [x.text for x in partners_info.findAll("td")][1:]
+            doc = BeautifulSoup(page)
+            content = doc.find(id="textcontent")
+            info = content.find(text="Project details").findParent("table").find(text="Project Acronym:").findParent("td")
+            contact_info = content.find(text="Coordinator").findParent("table").find(text="Contact Person:").findParent("td")
+            contact_info_tokens = contact_info.text.split("<br />")
+            organization_info = content.find(text="Coordinator").findParent("table").find(text="Organisation:").findParent("td")
+            partners_info = content.find(text="Participants").findParent("table")
+            partners_list = [x.text for x in partners_info.findAll("td")][1:]
 
-                contact_name = unescape(contact_info_tokens[0][contact_info_tokens[0].find("Name:")+5:].strip())
-                contact_phone = unescape(contact_info_tokens[1][contact_info_tokens[1].find("Tel:")+4:].strip())
-                contact_fax = unescape(contact_info_tokens[2][contact_info_tokens[2].find("fax:")+5:].strip())
-                contact = Person(contact_name, contact_phone, contact_fax)
+            contact_name = unescape(contact_info_tokens[0][contact_info_tokens[0].find("Name:")+5:].strip())
+            contact_phone = unescape(contact_info_tokens[1][contact_info_tokens[1].find("Tel:")+4:].strip())
+            contact_fax = unescape(contact_info_tokens[2][contact_info_tokens[2].find("fax:")+5:].strip())
+            contact = Person(contact_name, contact_phone, contact_fax)
 
-                activities = unescape(content.find(text="Research area:").parent.parent.getText()[len("Research area:"):].strip())
-                name = unescape(content.find("h4").getText().strip())
-                acronym = unescape(info.find(text="Project Acronym:").parent.nextSibling.strip())
+            activities = unescape(content.find(text="Research area:").parent.parent.getText()[len("Research area:"):].strip())
+            name = unescape(content.find("h4").getText().strip())
+            acronym = unescape(info.find(text="Project Acronym:").parent.nextSibling.strip())
 
-                start_date = unescape(info.find(text="Start Date:").parent.nextSibling.strip())
-                end_date = unescape(info.find(text="End Date:").parent.nextSibling.strip())
-                duration = unescape(info.find(text="Duration:").parent.nextSibling.strip())
-                cost = unescape(info.find(text="Project Cost:").parent.nextSibling.strip())
-                funding = unescape(info.find(text="Project Funding:").parent.nextSibling.strip())
-                status = unescape(info.find(text="Project Status:").parent.nextSibling.strip())
-                contract_type = unescape(info.find(text="Contract Type:").parent.nextSibling.strip())
-                coordinator = unescape(organization_info.text[len("Organisation:"):])
-                partners = [unescape("%s, %s" % (x[0],x[1])) for x in zip(partners_list[0::2], partners_list[1::2])]
-                reference = unescape(info.find(text="Project Reference:").parent.nextSibling.strip())
+            start_date = unescape(info.find(text="Start Date:").parent.nextSibling.strip())
+            end_date = unescape(info.find(text="End Date:").parent.nextSibling.strip())
+            duration = unescape(info.find(text="Duration:").parent.nextSibling.strip())
+            cost = unescape(info.find(text="Project Cost:").parent.nextSibling.strip())
+            funding = unescape(info.find(text="Project Funding:").parent.nextSibling.strip())
+            status = unescape(info.find(text="Project Status:").parent.nextSibling.strip())
+            contract_type = unescape(info.find(text="Contract Type:").parent.nextSibling.strip())
+            coordinator = unescape(organization_info.text[len("Organisation:"):])
+            partners = [unescape("%s, %s" % (x[0],x[1])) for x in zip(partners_list[0::2], partners_list[1::2])]
+            reference = unescape(info.find(text="Project Reference:").parent.nextSibling.strip())
 
-                project = Project(theme, activities, acronym, name, start_date,
-                                  end_date, duration, cost, funding,
-                                  status, contract_type, coordinator,
-                                  partners, contact, reference)
-                project_cache[key] = project
+            project = Project(theme, activities, acronym, name, start_date,
+                              end_date, duration, cost, funding,
+                              status, contract_type, coordinator,
+                              partners, contact, reference)
 
             out_queue.put(project)
         finally:
@@ -157,7 +158,25 @@ def get_timestamp():
 
 # Thanks to Fredrik Lundh, http://effbot.org/zone/re-sub.htm#unescape-html
 def unescape(text):
-    return unicode(text)
+    def fixup(m):
+        text = m.group(0)
+        if text[:2] == "&#":
+            # character reference
+            try:
+                if text[:3] == "&#x":
+                    return unichr(int(text[3:-1], 16))
+                else:
+                    return unichr(int(text[2:-1]))
+            except ValueError:
+                pass
+        else:
+            # named entity
+            try:
+                text = unichr(htmlentitydefs.name2codepoint[text[1:-1]])
+            except KeyError:
+                pass
+        return text # leave as is
+    return re.sub("&#?\w+;", fixup, text)
 
 
 if __name__ == "__main__":

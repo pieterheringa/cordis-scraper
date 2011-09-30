@@ -112,8 +112,8 @@ def project_worker():
             start_date = unescape(info.find(text="Start Date:").parent.nextSibling.strip())
             end_date = unescape(info.find(text="End Date:").parent.nextSibling.strip())
             duration = unescape(info.find(text="Duration:").parent.nextSibling.strip())
-            cost = unescape(info.find(text="Project Cost:").parent.nextSibling.strip())
-            funding = unescape(info.find(text="Project Funding:").parent.nextSibling.strip())
+            cost = convert_to_currency(unescape(info.find(text="Project Cost:").parent.nextSibling.strip()))
+            funding = convert_to_currency(unescape(info.find(text="Project Funding:").parent.nextSibling.strip()))
             status = unescape(info.find(text="Project Status:").parent.nextSibling.strip())
             contract_type = unescape(info.find(text="Contract Type:").parent.nextSibling.strip())
             partners = [unescape("%s, %s" % (x[0],x[1])) for x in zip(partners_list[0::2], partners_list[1::2])]
@@ -174,7 +174,6 @@ def project_worker():
             out_queue.put(project)
         except Exception, e:
             logging.exception(e)
-            raise
         finally:
             project_queue.task_done()
 
@@ -192,6 +191,20 @@ def get_themes():
         if not option or option == u"Any":
             continue
         yield option
+
+def convert_to_currency(string):
+    toks = string.split()
+    result = float(toks[0])
+    if "million" in toks:
+        result *= 1000000
+
+    # if `string` contains something we don't know, we should probably not convert it,
+    # but leave it as it is...
+    for tok in toks[1:]:
+        if tok not in ["million", "euro"]:
+            return string
+
+    return result
 
 
 def get_timestamp():
@@ -241,12 +254,12 @@ if __name__ == "__main__":
     for i in range(NUM_PROJECT_WORKER_THREADS):
          gevent.spawn(project_worker)
 
-    i = 0
+#    i = 0
     for item in get_themes():
         q.put(item)
-        i += 1
-        if i > 2:
-            break
+#        i += 1
+#        if i > 2:
+#            break
 
     try:
         q.join()  # block until all tasks are done

@@ -111,7 +111,7 @@ def project_worker():
 
 def get_themes():
     # http://cordis.europa.eu/fp7/projects_en.html
-    r = requests.get('ttp://cordihs.europa.eu/fp7/projects_en.html')
+    r = requests.get('http://cordis.europa.eu/fp7/projects_en.html')
     assert r.status_code == 200, "Error retrieving themes"
     doc = BeautifulSoup(r.content)
     for option in doc.find(id="themes"):

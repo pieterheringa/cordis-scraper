@@ -119,7 +119,7 @@ def get_themes():
             option = option.string.strip()
         except:
             continue
-        if not option:
+        if not option or option == u"Any":
             continue
         yield option
 
@@ -158,6 +158,7 @@ if __name__ == "__main__":
     for i, out in enumerate(out_queue):
         if data is None:
             data = tablib.Dataset(headers=out._fields)
+            data.append(out._fields)
         logging.info('OUT: %d, %s', i, repr(out))
         data.append(out)
 

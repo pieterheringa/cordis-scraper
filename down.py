@@ -175,7 +175,6 @@ def project_worker():
             logging.exception(e)
         finally:
             project_queue.task_done()
-    length_queue.put(max_partners)
 
 
 def get_themes():
@@ -233,7 +232,6 @@ if __name__ == "__main__":
     q = JoinableQueue()
     project_queue = JoinableQueue()
     out_queue = Queue()
-    length_queue = Queue()
 
     for i in range(NUM_THEME_WORKER_THREADS):
          gevent.spawn(theme_worker)
@@ -252,12 +250,6 @@ if __name__ == "__main__":
         project_cache.close()
         raise
     project_cache.close()
-
-    length_queue.put(StopIteration)
-    max_partners = 0
-    for len_partners in length_queue:
-        if max_partners < len_partners:
-            max_partners = len_partners
 
     out_queue.put(StopIteration)
     data = None

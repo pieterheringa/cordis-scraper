@@ -74,6 +74,7 @@ def project_worker():
     logging.info('START PROJECT WORKER')
 
     re_query = re.compile("QUERY=[a-zA-Z0-9\:]+")
+    max_partners = 0
     while True:
         try:
             theme, url = project_queue.get()
@@ -121,6 +122,8 @@ def project_worker():
             partners = [unescape("%s, %s" % (x[0],x[1])) for x in zip(partners_list[0::2], partners_list[1::2])]
             reference = unescape(info.find(text="Project Reference:").parent.nextSibling.strip())
 
+            if max_partners < len(partners):
+                max_partners = len(partners)
             project = Project(theme, activities, acronym, name, start_date,
                               end_date, duration, cost, funding,
                               status, contract_type, coordinator,
@@ -129,6 +132,7 @@ def project_worker():
             out_queue.put(project)
         finally:
             project_queue.task_done()
+    length_queue.put(max_partners)
 
 
 def get_themes():
@@ -144,6 +148,7 @@ def get_themes():
         if not option or option == u"Any":
             continue
         yield option
+        break
 
 
 def get_timestamp():
@@ -187,6 +192,7 @@ if __name__ == "__main__":
     q = JoinableQueue()
     project_queue = JoinableQueue()
     out_queue = Queue()
+    length_queue = Queue()
 
     for i in range(NUM_THEME_WORKER_THREADS):
          gevent.spawn(theme_worker)
@@ -204,13 +210,19 @@ if __name__ == "__main__":
         project_cache.close()
         raise
     project_cache.close()
-    out_queue.put(StopIteration)
 
+    length_queue.put(StopIteration)
+    max_partners = 0
+    for len_partners in length_queue:
+        if max_partners < len_partners:
+            max_partners = len_partners
+
+    out_queue.put(StopIteration)
     data = None
     for i, out in enumerate(out_queue):
         if data is None:
             data = tablib.Dataset(headers=out._fields)
-            data.append(out._fields)
+#            data.append(out._fields)
         logging.info('OUT: %d, %s', i, repr(out))
         data.append(out)
 

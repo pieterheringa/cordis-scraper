@@ -10,7 +10,7 @@ import shelve
 import re
 from collections import namedtuple
 import htmlentitydefs
-from BeautifulSoup import BeautifulSoup
+from BeautifulSoup import BeautifulSoup, NavigableString, Tag
 
 import gevent
 from gevent.queue import JoinableQueue, Queue
@@ -96,16 +96,14 @@ def project_worker():
             doc = BeautifulSoup(page)
             content = doc.find(id="textcontent")
             info = content.find(text="Project details").findParent("table").find(text="Project Acronym:").findParent("td")
-            contact_info = content.find(text="Coordinator").findParent("table").find(text="Contact Person:").findParent("td")
-            contact_info_tokens = contact_info.text.split("<br />")
-            organization_info = content.find(text="Coordinator").findParent("table").find(text="Organisation:").findParent("td")
-            partners_info = content.find(text="Participants").findParent("table")
-            partners_list = [x.text for x in partners_info.findAll("td")][1:]
-
-            contact_name = unescape(contact_info_tokens[0][contact_info_tokens[0].find("Name:")+5:].strip())
-            contact_phone = unescape(contact_info_tokens[1][contact_info_tokens[1].find("Tel:")+4:].strip())
-            contact_fax = unescape(contact_info_tokens[2][contact_info_tokens[2].find("fax:")+5:].strip())
-            contact = Person(contact_name, contact_phone, contact_fax)
+            coordinator_table = content.find(text="Coordinator")
+            participant_table = content.find(text="Participants")
+            offset = 1
+            if not participant_table:
+                participant_table = content.find(text="Beneficiaries")
+                offset = 0
+            partners_info = participant_table.findParent("table")
+            partners_list = [x.text for x in partners_info.findAll("td")][offset:]
 
             activities = unescape(content.find(text="Research area:").parent.parent.getText()[len("Research area:"):].strip())
             name = unescape(content.find("h4").getText().strip())
@@ -118,9 +116,52 @@ def project_worker():
             funding = unescape(info.find(text="Project Funding:").parent.nextSibling.strip())
             status = unescape(info.find(text="Project Status:").parent.nextSibling.strip())
             contract_type = unescape(info.find(text="Contract Type:").parent.nextSibling.strip())
-            coordinator = unescape(organization_info.text[len("Organisation:"):])
             partners = [unescape("%s, %s" % (x[0],x[1])) for x in zip(partners_list[0::2], partners_list[1::2])]
             reference = unescape(info.find(text="Project Reference:").parent.nextSibling.strip())
+
+            if coordinator_table:
+                contact_info = coordinator_table.findParent("table").find(text="Contact Person:").findParent("td")
+                contact_info_tokens = contact_info.text.split("<br />")
+                organization_info = coordinator_table.findParent("table").find(text="Organisation:").findParent("td")
+
+                coordinator = unescape(organization_info.text[len("Organisation:"):])
+                contact_name = unescape(contact_info_tokens[0][contact_info_tokens[0].find("Name:")+5:].strip())
+                contact_phone = unescape(contact_info_tokens[1][contact_info_tokens[1].find("Tel:")+4:].strip())
+                contact_fax = unescape(contact_info_tokens[2][contact_info_tokens[2].find("fax:")+5:].strip())
+                contact = Person(contact_name, contact_phone, contact_fax)
+            else:
+                institution = content.find(text="Host Institution").findParent("tr").nextSibling.nextSibling
+                node = institution.contents[0].contents[0]
+
+                text = ""
+                coordinator = ""
+                contact_name = ""
+                contact_phone = ""
+                contact_fax = ""
+                while True:
+                    if type(node) == NavigableString:
+                        if not coordinator:
+                            text += (node + " ").strip()
+                        else:
+                            tokens = node.split(":")
+                            if tokens[0] == "Contact":
+                                contact_name = tokens[1].strip()
+                            elif tokens[0] == "Tel":
+                                contact_phone = tokens[1].strip()
+                            elif tokens[0] == "Fax":
+                                contact_fax = tokens[1].strip()
+                    elif type(node) == Tag and node.name == "hr":
+                        coordinator = text.strip()
+                        text = ""
+                    node = node.nextSibling
+                    if not node:
+                        break
+
+                contact = Person(contact_name, contact_phone, contact_fax)
+                
+
+
+
 
             if max_partners < len(partners):
                 max_partners = len(partners)

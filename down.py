@@ -4,6 +4,8 @@ from gevent import monkey #the best thing to do is put this import in manage.py
 monkey.patch_socket()
 
 import logging
+import requests
+from BeautifulSoup import BeautifulSoup
 
 import gevent
 from gevent.queue import JoinableQueue, Queue
@@ -39,7 +41,17 @@ def project_worker():
 
 def get_themes():
     # http://cordis.europa.eu/fp7/projects_en.html
-    return 't1,t2,t3,t4'.split(',')
+    r = requests.get('http://cordis.europa.eu/fp7/projects_en.html')
+    assert r.status_code == 200, "Error retrieving themes"
+    doc = BeautifulSoup(r.content)
+    for option in doc.find(id="themes"):
+        try:
+            option = option.string.strip()
+        except:
+            continue
+        if not option:
+            continue
+        yield option
 
 
 if __name__ == "__main__":

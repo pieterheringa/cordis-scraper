@@ -109,8 +109,10 @@ if __name__ == "__main__":
     project_queue.join()
     out_queue.put(StopIteration)
 
-    data = tablib.Dataset(headers=['First Name', 'Last Name', 'Age'])
+    data = None
     for i, out in enumerate(out_queue):
+        if data is None:
+            data = tablib.Dataset(headers=out._fields)
         logging.info('OUT: %d, %s', i, repr(out))
         data.append(out)
 

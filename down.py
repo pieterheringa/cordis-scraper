@@ -38,6 +38,7 @@ def theme_worker():
 
     logging.info('START THEME WORKER')
     while True:
+        count = 0
         theme = q.get()
         logging.info('THEME: %s', repr(theme))
 
@@ -51,6 +52,7 @@ def theme_worker():
                 doc = BeautifulSoup(r.content)
                 for proj in get_projects(doc):
                     project_queue.put((theme, proj))
+                    count += 1
                 try:
                     next_ = dict(doc.find(
                             text="Next 20 projects &raquo;").parent.attrs
@@ -58,10 +60,10 @@ def theme_worker():
                 except AttributeError:
                     break
                 url = "http://cordis.europa.eu" + next_
-
         except:
             logging.error("THEME_WORKER: Error for url: %s", url)
         finally:
+            logging.info('THEME: %s finished, %d projects', repr(theme), count)
             q.task_done()
 
 
@@ -185,8 +187,13 @@ if __name__ == "__main__":
     for item in get_themes():
         q.put(item)
 
-    q.join()  # block until all tasks are done
-    project_queue.join()
+    try:
+        q.join()  # block until all tasks are done
+        project_queue.join()
+    except KeyboardInterrupt:
+        # close the shelve
+        raise
+    # close the shelve
     out_queue.put(StopIteration)
 
     cache.close()

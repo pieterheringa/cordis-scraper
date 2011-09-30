@@ -7,6 +7,7 @@ monkey.patch_socket()
 import logging
 import requests
 import tablib
+import shelve
 from BeautifulSoup import BeautifulSoup
 
 import gevent
@@ -26,6 +27,7 @@ NUM_THEME_WORKER_THREADS = 6
 NUM_PROJECT_WORKER_THREADS = 50
 
 THEME_URL = "http://cordis.europa.eu/fetch?CALLER=FP7_PROJ_EN&QM_EP_PGA_A=%(theme)s"
+cache = None
 
 def theme_worker():
     def get_projects(doc):
@@ -64,49 +66,55 @@ def theme_worker():
 
 
 def project_worker():
+    global cache
     logging.info('START PROJECT WORKER')
     while True:
         try:
             theme, url = project_queue.get()
             logging.info('PROJECT: %s: %s' % (theme, url))
-            r = requests.get(url)
-            if not r.ok:
-               logging.error("Request failed for url: %s", url)
-               continue
 
-            doc = BeautifulSoup(r.content)
-            content = doc.find(id="textcontent")
-            info = content.find(text="Project details").findParent("table").find(text="Project Acronym:").findParent("td")
-            contact_info = content.find(text="Coordinator").findParent("table").find(text="Contact Person:").findParent("td")
-            organization_info = content.find(text="Coordinator").findParent("table").find(text="Organisation:").findParent("td")
-            partners_info = content.find(text="Participants").findParent("table")
-            partners_list = [x.text for x in partners_info.findAll("td")][1:]
+            if url in cache:
+                project = cache[url]
+            else:
+                r = requests.get(url)
+                if not r.ok:
+                   logging.error("Request failed for url: %s", url)
+                   continue
 
-            contact_info_tokens = contact_info.text.split("<br />")
-            contact_name = contact_info_tokens[0][contact_info_tokens[0].find("Name:")+5:].strip()
-            contact_phone = contact_info_tokens[1][contact_info_tokens[1].find("Tel:")+5:].strip()
-            contact_fax = contact_info_tokens[2][contact_info_tokens[2].find("fax:")+5:].strip()
-            contact = Person(contact_name, contact_phone, contact_fax)
+                doc = BeautifulSoup(r.content)
+                content = doc.find(id="textcontent")
+                info = content.find(text="Project details").findParent("table").find(text="Project Acronym:").findParent("td")
+                contact_info = content.find(text="Coordinator").findParent("table").find(text="Contact Person:").findParent("td")
+                contact_info_tokens = contact_info.text.split("<br />")
+                organization_info = content.find(text="Coordinator").findParent("table").find(text="Organisation:").findParent("td")
+                partners_info = content.find(text="Participants").findParent("table")
+                partners_list = [x.text for x in partners_info.findAll("td")][1:]
 
-            activities = content.find(text="Research area:").parent.parent.getText()[len("Research area:"):].strip()
-            name = content.find("h4").getText().strip()
-            acronym = info.find(text="Project Acronym:").parent.nextSibling.strip()
+                contact_name = unescape(contact_info_tokens[0][contact_info_tokens[0].find("Name:")+5:].strip())
+                contact_phone = unescape(contact_info_tokens[1][contact_info_tokens[1].find("Tel:")+4:].strip())
+                contact_fax = unescape(contact_info_tokens[2][contact_info_tokens[2].find("fax:")+4:].strip())
+                contact = Person(contact_name, contact_phone, contact_fax)
 
-            start_date = info.find(text="Start Date:").parent.nextSibling.strip()
-            end_date = info.find(text="End Date:").parent.nextSibling.strip()
-            duration = info.find(text="Duration:").parent.nextSibling.strip()
-            cost = info.find(text="Project Cost:").parent.nextSibling.strip()
-            funding = info.find(text="Project Funding:").parent.nextSibling.strip()
-            status = info.find(text="Project Status:").parent.nextSibling.strip()
-            contract_type = info.find(text="Contract Type:").parent.nextSibling.strip()
-            coordinator = organization_info.text[len("Organisation:"):]
-            partners = ["%s, %s" % (x[0],x[1]) for x in zip(partners_list[0::2], partners_list[1::2])]
-            reference = info.find(text="Project Reference:").parent.nextSibling.strip()
+                activities = unescape(content.find(text="Research area:").parent.parent.getText()[len("Research area:"):].strip())
+                name = unescape(content.find("h4").getText().strip())
+                acronym = unescape(info.find(text="Project Acronym:").parent.nextSibling.strip())
 
-            project = Project(theme, activities, acronym, name, start_date,
-                              end_date, duration, cost, funding,
-                              status, contract_type, coordinator,
-                              partners, contact, reference)
+                start_date = unescape(info.find(text="Start Date:").parent.nextSibling.strip())
+                end_date = unescape(info.find(text="End Date:").parent.nextSibling.strip())
+                duration = unescape(info.find(text="Duration:").parent.nextSibling.strip())
+                cost = unescape(info.find(text="Project Cost:").parent.nextSibling.strip())
+                funding = unescape(info.find(text="Project Funding:").parent.nextSibling.strip())
+                status = unescape(info.find(text="Project Status:").parent.nextSibling.strip())
+                contract_type = unescape(info.find(text="Contract Type:").parent.nextSibling.strip())
+                coordinator = unescape(organization_info.text[len("Organisation:"):])
+                partners = [unescape("%s, %s" % (x[0],x[1])) for x in zip(partners_list[0::2], partners_list[1::2])]
+                reference = unescape(info.find(text="Project Reference:").parent.nextSibling.strip())
+
+                project = Project(theme, activities, acronym, name, start_date,
+                                  end_date, duration, cost, funding,
+                                  status, contract_type, coordinator,
+                                  partners, contact, reference)
+                cache[url] = project
 
             out_queue.put(project)
         finally:
@@ -126,8 +134,8 @@ def get_themes():
         if not option or option == u"Any":
             continue
         yield option
-        break
 
+        
 def get_timestamp():
     """
     returns a string containg the timestamp (in seconds)
@@ -138,7 +146,32 @@ def get_timestamp():
     return str(mktime(datetime.utcnow().timetuple()))[:-2]
 
 
+# Thanks to Fredrik Lundh, http://effbot.org/zone/re-sub.htm#unescape-html
+def unescape(text):
+    def fixup(m):
+        text = m.group(0)
+        if text[:2] == "&#":
+            # character reference
+            try:
+                if text[:3] == "&#x":
+                    return unichr(int(text[3:-1], 16))
+                else:
+                    return unichr(int(text[2:-1]))
+            except ValueError:
+                pass
+        else:
+            # named entity
+            try:
+                text = unichr(htmlentitydefs.name2codepoint[text[1:-1]])
+            except KeyError:
+                pass
+        return text # leave as is
+    return re.sub("&#?\w+;", fixup, text)
+
+
 if __name__ == "__main__":
+    cache = shelve.open("cache")
+
     q = JoinableQueue()
     project_queue = JoinableQueue()
     out_queue = Queue()
@@ -155,6 +188,8 @@ if __name__ == "__main__":
     q.join()  # block until all tasks are done
     project_queue.join()
     out_queue.put(StopIteration)
+
+    cache.close()
 
     data = None
     for i, out in enumerate(out_queue):

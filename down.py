@@ -5,6 +5,7 @@ monkey.patch_socket()
 
 import logging
 import requests
+import tablib
 from BeautifulSoup import BeautifulSoup
 
 import gevent
@@ -80,6 +81,16 @@ def get_themes():
         yield option
 
 
+def get_timestamp():
+    """
+    returns a string containg the timestamp (in seconds)
+    """
+    from datetime import datetime
+    from time import mktime
+
+    return str(mktime(datetime.utcnow().timetuple()))[:-2]
+
+
 if __name__ == "__main__":
     q = JoinableQueue()
     project_queue = JoinableQueue()
@@ -98,6 +109,13 @@ if __name__ == "__main__":
     project_queue.join()
     out_queue.put(StopIteration)
 
+    data = tablib.Dataset(headers=['First Name', 'Last Name', 'Age'])
     for i, out in enumerate(out_queue):
-        print i, out
+        logging.info('OUT: %d, %s', i, repr(out))
+        data.append(out)
+
+    with open('projects.%s.ods' % (get_timestamp(),), 'w') as f:
+        f.write(data.ods)
+
+
 

@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-from collections import namedtuple
 from gevent import monkey #the best thing to do is put this import in manage.py
 monkey.patch_socket()
 
@@ -8,6 +7,9 @@ import logging
 import requests
 import tablib
 import shelve
+import re
+from collections import namedtuple
+import htmlentitydefs
 from BeautifulSoup import BeautifulSoup
 
 import gevent
@@ -24,10 +26,10 @@ Project = namedtuple('Project', ['theme', 'activities', 'acronym',
                                  'contact_person', 'reference'])
 
 NUM_THEME_WORKER_THREADS = 6
-NUM_PROJECT_WORKER_THREADS = 50
+NUM_PROJECT_WORKER_THREADS = 10
 
 THEME_URL = "http://cordis.europa.eu/fetch?CALLER=FP7_PROJ_EN&QM_EP_PGA_A=%(theme)s"
-cache = None
+project_cache = None
 
 def theme_worker():
     def get_projects(doc):
@@ -46,7 +48,7 @@ def theme_worker():
         try:
             while True:
                 r = requests.get(url)
-                if r.status_code != 200:
+                if not r.ok:
                     logging.error("Request failed for url: %s", url)
                     continue
                 doc = BeautifulSoup(r.content)
@@ -68,15 +70,16 @@ def theme_worker():
 
 
 def project_worker():
-    global cache
+    global project_cache
     logging.info('START PROJECT WORKER')
     while True:
         try:
             theme, url = project_queue.get()
+            url = str(url)
             logging.info('PROJECT: %s: %s' % (theme, url))
 
-            if url in cache:
-                project = cache[url]
+            if url in project_cache:
+                project = project_cache[url]
             else:
                 r = requests.get(url)
                 if not r.ok:
@@ -116,7 +119,7 @@ def project_worker():
                                   end_date, duration, cost, funding,
                                   status, contract_type, coordinator,
                                   partners, contact, reference)
-                cache[url] = project
+                project_cache[url] = project
 
             out_queue.put(project)
         finally:
@@ -137,7 +140,7 @@ def get_themes():
             continue
         yield option
 
-        
+
 def get_timestamp():
     """
     returns a string containg the timestamp (in seconds)
@@ -172,7 +175,7 @@ def unescape(text):
 
 
 if __name__ == "__main__":
-    cache = shelve.open("cache")
+    project_cache = shelve.open("project_cache.shelve")
 
     q = JoinableQueue()
     project_queue = JoinableQueue()
@@ -191,12 +194,10 @@ if __name__ == "__main__":
         q.join()  # block until all tasks are done
         project_queue.join()
     except KeyboardInterrupt:
-        # close the shelve
+        project_cache.close()
         raise
-    # close the shelve
+    project_cache.close()
     out_queue.put(StopIteration)
-
-    cache.close()
 
     data = None
     for i, out in enumerate(out_queue):

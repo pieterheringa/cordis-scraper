@@ -130,6 +130,8 @@ def project_worker():
                               partners, contact, reference)
 
             out_queue.put(project)
+        except Exception, e:
+            logging.exception(e)
         finally:
             project_queue.task_done()
     length_queue.put(max_partners)
@@ -186,8 +188,6 @@ def unescape(text):
 
 if __name__ == "__main__":
     project_cache = shelve.open("project_cache.shelve")
-    print project_cache.keys()
-
 
     q = JoinableQueue()
     project_queue = JoinableQueue()
@@ -207,6 +207,7 @@ if __name__ == "__main__":
         q.join()  # block until all tasks are done
         project_queue.join()
     except KeyboardInterrupt:
+        logging.info('CTRL-C: save before exit')
         project_cache.close()
         raise
     project_cache.close()

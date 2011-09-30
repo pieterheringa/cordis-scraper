@@ -125,9 +125,9 @@ def project_worker():
                 organization_info = coordinator_table.findParent("table").find(text="Organisation:").findParent("td")
 
                 coordinator = unescape(organization_info.text[len("Organisation:"):])
-                contact_name = unescape(contact_info_tokens[0][contact_info_tokens[0].find("Name:")+5:].strip())
-                contact_phone = unescape(contact_info_tokens[1][contact_info_tokens[1].find("Tel:")+4:].strip())
-                contact_fax = unescape(contact_info_tokens[2][contact_info_tokens[2].find("fax:")+5:].strip())
+                contact_name = unescape(contact_info_tokens[0][contact_info_tokens[0].find("Name:")+5:].strip()) if len(contact_info_tokens) > 0 else ""
+                contact_phone = unescape(contact_info_tokens[1][contact_info_tokens[1].find("Tel:")+4:].strip()) if len(contact_info_tokens) > 1 else ""
+                contact_fax = unescape(contact_info_tokens[2][contact_info_tokens[2].find("fax:")+5:].strip()) if len(contact_info_tokens) > 2 else ""
                 contact = Person(contact_name, contact_phone, contact_fax)
             else:
                 institution = content.find(text="Host Institution").findParent("tr").nextSibling.nextSibling
@@ -170,9 +170,11 @@ def project_worker():
                               status, contract_type, coordinator,
                               partners, contact, reference)
 
+            length_queue.put(len(partners))
             out_queue.put(project)
         except Exception, e:
             logging.exception(e)
+            raise
         finally:
             project_queue.task_done()
 
@@ -190,7 +192,6 @@ def get_themes():
         if not option or option == u"Any":
             continue
         yield option
-        break
 
 
 def get_timestamp():
@@ -232,6 +233,7 @@ if __name__ == "__main__":
     q = JoinableQueue()
     project_queue = JoinableQueue()
     out_queue = Queue()
+    length_queue = Queue()
 
     for i in range(NUM_THEME_WORKER_THREADS):
          gevent.spawn(theme_worker)
@@ -239,8 +241,12 @@ if __name__ == "__main__":
     for i in range(NUM_PROJECT_WORKER_THREADS):
          gevent.spawn(project_worker)
 
+    i = 0
     for item in get_themes():
         q.put(item)
+        i += 1
+        if i > 2:
+            break
 
     try:
         q.join()  # block until all tasks are done
@@ -251,17 +257,29 @@ if __name__ == "__main__":
         raise
     project_cache.close()
 
+    length_queue.put(StopIteration)
+    max_length = 0
+    for length in length_queue:
+        if max_length < length:
+            max_length = length
+
     out_queue.put(StopIteration)
     data = None
+
+    headers = ["Theme", "Activities (research area)", "Project Acronym", "Start Date", "End Date", "Duration", "Project Cost", "Project Funding", "Project Status", "Contract Type", "Coordinator"]
+    for i in range(max_length):
+        headers.append("Partner %d" % (i+1))
+    headers.extend(["Person Coordinator", "Phone", "Fax", "Project Reference"])
+    data = tablib.Dataset(headers=headers)
     for i, out in enumerate(out_queue):
-        if data is None:
-            data = tablib.Dataset(headers=out._fields)
-#            data.append(out._fields)
-        logging.info('OUT: %d, %s', i, repr(out))
-        data.append(out)
+        logging.info('OUT: %d', i)
+        row = [out.theme, out.activities, out.acronym, out.start_date, out.end_date, out.duration, out.cost, out.funding, out.status, out.contract_type, out.coordinator]
+        for i in out.partners:
+            row.append(i)
+        for i in range(max_length - len(out.partners)):
+            row.append("")
+        row.extend([out.contact_person.name, out.contact_person.phone, out.contact_person.fax, out.reference])
+        data.append(row)
 
-    with open('projects.%s.ods' % (get_timestamp(),), 'w') as f:
-        f.write(data.ods)
-
-
-
+    with open('projects.%s.csv' % (get_timestamp(),), 'w') as f:
+        f.write(data.csv)

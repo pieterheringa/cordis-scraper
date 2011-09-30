@@ -6,11 +6,13 @@ monkey.patch_socket()
 import logging
 import requests
 import tablib
-import shelve
+import zlib
+#import shelve
 import re
 from collections import namedtuple
 import htmlentitydefs
 from BeautifulSoup import BeautifulSoup, NavigableString, Tag
+from redis import Redis
 
 import gevent
 from gevent.queue import JoinableQueue, Queue
@@ -29,7 +31,7 @@ NUM_THEME_WORKER_THREADS = 6
 NUM_PROJECT_WORKER_THREADS = 10
 
 THEME_URL = "http://cordis.europa.eu/fetch?CALLER=FP7_PROJ_EN&QM_EP_PGA_A=%(theme)s"
-project_cache = None
+#project_cache = None
 
 def theme_worker():
     def get_projects(doc):
@@ -70,11 +72,12 @@ def theme_worker():
 
 
 def project_worker():
-    global project_cache
+#    global project_cache
     logging.info('START PROJECT WORKER')
 
     re_query = re.compile("QUERY=[a-zA-Z0-9\:]+")
     max_partners = 0
+    red = Redis(db=6)
     while True:
         try:
             theme, url = project_queue.get()
@@ -83,15 +86,16 @@ def project_worker():
             key = url.replace( url[match.start():match.end()+1], "" )
             logging.info('PROJECT: %s: %s' % (theme, url))
 
-            if key in project_cache:
-                page = project_cache[key]
+            value = red.get(key)
+            if value is not None:
+                page = zlib.decompress(value)
             else:
                 r = requests.get(url)
                 if not r.ok:
                    logging.error("Request failed for url: %s", url)
                    continue
                 page = r.content
-                project_cache[key] = page
+                red.set(key, page)
 
             doc = BeautifulSoup(page)
             content = doc.find(id="textcontent")
@@ -158,7 +162,7 @@ def project_worker():
                         break
 
                 contact = Person(contact_name, contact_phone, contact_fax)
-                
+
 
 
 
@@ -228,7 +232,7 @@ def unescape(text):
 
 
 if __name__ == "__main__":
-    project_cache = shelve.open("project_cache.shelve")
+#    project_cache = shelve.open("project_cache.shelve")
 
     q = JoinableQueue()
     project_queue = JoinableQueue()
@@ -241,21 +245,17 @@ if __name__ == "__main__":
     for i in range(NUM_PROJECT_WORKER_THREADS):
          gevent.spawn(project_worker)
 
-    i = 0
     for item in get_themes():
         q.put(item)
-        i += 1
-        if i > 2:
-            break
 
     try:
         q.join()  # block until all tasks are done
         project_queue.join()
     except KeyboardInterrupt:
         logging.info('CTRL-C: save before exit')
-        project_cache.close()
+#        project_cache.close()
         raise
-    project_cache.close()
+#    project_cache.close()
 
     length_queue.put(StopIteration)
     max_length = 0

@@ -109,7 +109,8 @@ def project_worker():
             partners_info = participant_table.findParent("table")
             partners_list = [x.text for x in partners_info.findAll("td")][offset:]
 
-            activities = unescape(content.find(text="Research area:").parent.parent.getText()[len("Research area:"):].strip())
+            research_area = content.find(text="Research area:")
+            activities = unescape(research_area.parent.parent.getText()[len("Research area:"):].strip()) if research_area else "-"
             name = unescape(content.find("h4").getText().strip())
             acronym = unescape(info.find(text="Project Acronym:").parent.nextSibling.strip())
 

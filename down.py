@@ -12,18 +12,18 @@ from gevent.queue import JoinableQueue, Queue
 
 logging.basicConfig(level=logging.DEBUG)
 
-NUM_THEME_WORKER_THREADS = 4
-NUM_PROJECT_WORKER_THREADS = 20
+NUM_THEME_WORKER_THREADS = 6
+NUM_PROJECT_WORKER_THREADS = 50
 
 THEME_URL = "http://cordis.europa.eu/fetch?CALLER=FP7_PROJ_EN&QM_EP_PGA_A=%(theme)s"
 
-def get_projects(doc):
-    for result in doc.findAll(title=u"Project acronym"):
-        a = result.a
-        link = "http://cordis.europa.eu" + dict(a.attrs)['href'][2:]
-        yield link
-
 def theme_worker():
+    def get_projects(doc):
+        for result in doc.findAll(title=u"Project acronym"):
+            a = result.a
+            link = "http://cordis.europa.eu" + dict(a.attrs)['href'][2:]
+            yield link
+
     logging.info('START THEME WORKER')
     while True:
         theme = q.get()

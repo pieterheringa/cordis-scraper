@@ -72,14 +72,18 @@ def theme_worker():
 def project_worker():
     global project_cache
     logging.info('START PROJECT WORKER')
+
+    re_query = re.compile("QUERY=[a-zA-Z0-9\:]+")
     while True:
         try:
             theme, url = project_queue.get()
             url = str(url)
+            match = re_query.search(url)
+            key = url.replace( url[match.start():match.end()+1], "" )
             logging.info('PROJECT: %s: %s' % (theme, url))
 
-            if url in project_cache:
-                project = project_cache[url]
+            if key in project_cache:
+                project = project_cache[key]
             else:
                 r = requests.get(url)
                 if not r.ok:
@@ -97,7 +101,7 @@ def project_worker():
 
                 contact_name = unescape(contact_info_tokens[0][contact_info_tokens[0].find("Name:")+5:].strip())
                 contact_phone = unescape(contact_info_tokens[1][contact_info_tokens[1].find("Tel:")+4:].strip())
-                contact_fax = unescape(contact_info_tokens[2][contact_info_tokens[2].find("fax:")+4:].strip())
+                contact_fax = unescape(contact_info_tokens[2][contact_info_tokens[2].find("fax:")+5:].strip())
                 contact = Person(contact_name, contact_phone, contact_fax)
 
                 activities = unescape(content.find(text="Research area:").parent.parent.getText()[len("Research area:"):].strip())
@@ -119,7 +123,7 @@ def project_worker():
                                   end_date, duration, cost, funding,
                                   status, contract_type, coordinator,
                                   partners, contact, reference)
-                project_cache[url] = project
+                project_cache[key] = project
 
             out_queue.put(project)
         finally:
@@ -153,29 +157,13 @@ def get_timestamp():
 
 # Thanks to Fredrik Lundh, http://effbot.org/zone/re-sub.htm#unescape-html
 def unescape(text):
-    def fixup(m):
-        text = m.group(0)
-        if text[:2] == "&#":
-            # character reference
-            try:
-                if text[:3] == "&#x":
-                    return unichr(int(text[3:-1], 16))
-                else:
-                    return unichr(int(text[2:-1]))
-            except ValueError:
-                pass
-        else:
-            # named entity
-            try:
-                text = unichr(htmlentitydefs.name2codepoint[text[1:-1]])
-            except KeyError:
-                pass
-        return text # leave as is
-    return re.sub("&#?\w+;", fixup, text)
+    return unicode(text)
 
 
 if __name__ == "__main__":
     project_cache = shelve.open("project_cache.shelve")
+    print project_cache.keys()
+
 
     q = JoinableQueue()
     project_queue = JoinableQueue()

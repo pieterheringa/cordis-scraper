@@ -9,6 +9,7 @@ import tablib
 import zlib
 #import shelve
 import re
+import sys
 from collections import namedtuple
 import htmlentitydefs
 from BeautifulSoup import BeautifulSoup, NavigableString, Tag
@@ -27,7 +28,7 @@ Project = namedtuple('Project', ['theme', 'activities', 'acronym',
                                  'coordinator', 'partners',
                                  'contact_person', 'reference'])
 
-NUM_THEME_WORKER_THREADS = 6
+NUM_THEME_WORKER_THREADS = 4
 NUM_PROJECT_WORKER_THREADS = 10
 
 THEME_URL = "http://cordis.europa.eu/fetch?CALLER=FP7_PROJ_EN&QM_EP_PGA_A=%(theme)s"
@@ -87,15 +88,15 @@ def project_worker():
             logging.info('PROJECT: %s: %s' % (theme, url))
 
             value = red.get(key)
-            if value is not None:
+            try:
                 page = zlib.decompress(value)
-            else:
+            except:
                 r = requests.get(url)
                 if not r.ok:
                    logging.error("Request failed for url: %s", url)
                    continue
                 page = r.content
-                red.set(key, page)
+                red.set(key, zlib.compress(page, 9))
 
             doc = BeautifulSoup(page)
             content = doc.find(id="textcontent")
@@ -164,10 +165,6 @@ def project_worker():
 
                 contact = Person(contact_name, contact_phone, contact_fax)
 
-
-
-
-
             if max_partners < len(partners):
                 max_partners = len(partners)
             project = Project(theme, activities, acronym, name, start_date,
@@ -179,6 +176,8 @@ def project_worker():
             out_queue.put(project)
         except Exception, e:
             logging.exception(e)
+            print '============', url
+            sys.exit()
         finally:
             project_queue.task_done()
 

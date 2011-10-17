@@ -78,7 +78,7 @@ def project_worker():
 
     re_query = re.compile("QUERY=[a-zA-Z0-9\:]+")
     max_partners = 0
-    red = Redis(db=6)
+    red = Redis(host="192.168.1.175", db=6)
     while True:
         try:
             theme, url = project_queue.get()

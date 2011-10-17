@@ -5,24 +5,70 @@ __author__ = 'stefanop'
 import sys
 import csv
 
-if len(sys.argv) < 3:
+if len(sys.argv) < 2:
     print "Usage:"
-    print "python %s input-file output-file" % sys.argv[0]
+    print "python %s input-file" % sys.argv[0]
     exit(1)
 
 file_in = sys.argv[1]
-file_out = sys.argv[2]
+
+
+programmes = {
+    'General': ['FP7',
+                ],
+    
+    'Cooperation': ['FP7-HEALTH',
+                    'FP7-COORDINATION',
+                    'FP7-ENERGY',
+                    'FP7-ENVIRONMENT',
+                    'FP7-ICT',
+                    'FP7-KBBE',
+                    'FP7-NMP',
+                    'FP7-SECURITY',
+                    'FP7-SPACE',
+                    'FP7-SSH',
+                    'FP7-TRANSPORT',
+                    'FP7-JTI',
+                    ],
+
+    'Euratom': ['FP7-EURATOM-FUSION',
+                'FP7-EURATOM-FISSION'
+                ],
+
+    'Ideas': ['FP7-IDEAS',
+              ],
+
+    'Capacities': ['FP7-INCO',
+                   'FP7-INFRASTRUCTURES',
+                   'FP7-POTENTIAL',
+                   'FP7-REGIONAL',
+                   'FP7-SIS',
+                   'FP7-SME',
+                   ],
+
+    'People': ['FP7-PEOPLE',
+               ],
+
+    'JRC': []
+}
+
+mapping = {}
+for programme in programmes:
+    for name in programmes[programme]:
+        mapping[name] = programme
+
 
 try:
     fin = open(file_in)
-    fout = open(file_out, 'w')
 except IOError, e:
     print e
     exit(2)
 
 headers = {}
-coordinators = {}
-partners = []
+matrices = {}
+for programme in programmes:
+    matrices[programme] = ({}, [])
+
 csv_reader = csv.reader(fin, delimiter=',', quotechar='"')
 for cells in csv_reader:
     if len(headers) == 0:
@@ -33,31 +79,39 @@ for cells in csv_reader:
                 if 'partners' not in headers:
                     headers['partners'] = []
                 headers['partners'].append(i)
+            elif cell == 'Theme':
+                headers['programme'] = i
         continue
+
+    partners, coordinators = matrices[mapping[cells[headers['programme']]]]
 
     coordinator = cells[headers['coordinator']]
     if coordinator not in coordinators:
-        coordinators[coordinator] = {}
+        coordinators.append(coordinator)
 
     for column in headers['partners']:
         partner = cells[column]
         if not partner:
             continue
         if partner not in partners:
-            partners.append(partner)
-        if partner not in coordinators[coordinator]:
-            coordinators[coordinator][partner] = 0
-        coordinators[coordinator][partner] += 1
+            partners[partner] = {}
+        if coordinator not in partners[partner]:
+            partners[partner][coordinator] = 0
+        partners[partner][coordinator] += 1
 
 
-csv_writer = csv.writer(fout, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
-csv_writer.writerow([''] + partners)
+for matrix in matrices:
+    if len(coordinators) == 0: continue
 
-for coordinator in coordinators:
-    row = [coordinator]
+    file_out = 'matrix_%s.csv' % (matrix)
+    fout = open(file_out, 'w')
+    csv_writer = csv.writer(fout, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+    csv_writer.writerow([""] + coordinators)
     for partner in partners:
-        value = 0
-        if partner in coordinators[coordinator]:
-            value = coordinators[coordinator][partner]
-        row.append(unicode(value))
-    csv_writer.writerow(row)
+        row = [partner]
+        for coordinator in coordinators:
+            value = '0'
+            if coordinator in partners[partner]:
+                value = partners[partner][coordinator]
+            row.append(unicode(value))
+        csv_writer.writerow(row)

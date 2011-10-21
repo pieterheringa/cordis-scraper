@@ -16,7 +16,7 @@ file_in = sys.argv[1]
 programmes = {
     'General': ['FP7',
                 ],
-    
+
     'Cooperation': ['FP7-HEALTH',
                     'FP7-COORDINATION',
                     'FP7-ENERGY',
@@ -83,21 +83,22 @@ for cells in csv_reader:
                 headers['programme'] = i
         continue
 
-    partners, coordinators = matrices[mapping[cells[headers['programme']]]]
+    coordinators, partners = matrices[mapping[cells[headers['programme']]]]
 
     coordinator = cells[headers['coordinator']]
     if coordinator not in coordinators:
-        coordinators.append(coordinator)
+        coordinators[coordinator] = {}
 
     for column in headers['partners']:
         partner = cells[column]
         if not partner:
             continue
         if partner not in partners:
-            partners[partner] = {}
-        if coordinator not in partners[partner]:
-            partners[partner][coordinator] = 0
-        partners[partner][coordinator] += 1
+            partners.append(partner)
+        if partner not in coordinators[coordinator]:
+            coordinators[coordinator][partner] = 0
+        coordinators[coordinator][partner] += 1
+
 
 
 for matrix in matrices:
@@ -106,12 +107,13 @@ for matrix in matrices:
     file_out = 'matrix_%s.csv' % (matrix)
     fout = open(file_out, 'w')
     csv_writer = csv.writer(fout, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
-    csv_writer.writerow([""] + coordinators)
-    for partner in partners:
-        row = [partner]
-        for coordinator in coordinators:
-            value = '0'
-            if coordinator in partners[partner]:
-                value = partners[partner][coordinator]
+    csv_writer.writerow([''] + partners)
+
+    for coordinator in coordinators:
+        row = [coordinator]
+        for partner in partners:
+            value = 0
+            if partner in coordinators[coordinator]:
+                value = coordinators[coordinator][partner]
             row.append(unicode(value))
         csv_writer.writerow(row)

@@ -1,17 +1,20 @@
-__author__ = 'stefanop'
 """ Given the csv file created by `down.py`, builds
  a adjacency matrix of Coordinators and Partners """
+__author__ = 'stefanop'
 
-import sys
 import csv
+import sys
+from utils import create_csv, create_net, create_txt1, create_txt2
 
-if len(sys.argv) < 2:
+if len(sys.argv) < 3:
     print "Usage:"
-    print "python %s input-file" % sys.argv[0]
+    print "python %s input-file <csv|net|1.txt|2.txt>" % sys.argv[0]
     exit(1)
 
 file_in = sys.argv[1]
+out_format = sys.argv[2]
 
+assert(out_format in ("csv", "net", "1.txt", "2.txt"))
 
 programmes = {
     'General': ['FP7',
@@ -52,11 +55,15 @@ programmes = {
     'JRC': []
 }
 
+AGGREGATE = True if out_format != "2.txt" else False
+SUB_MATRICES = True
+ENABLED = ['Cooperation', 'Capacities']
+
 mapping = {}
 for programme in programmes:
     for name in programmes[programme]:
-        mapping[name] = programme
-
+        if programme in ENABLED or '*' in ENABLED:
+            mapping[name] = programme if not SUB_MATRICES else name
 
 try:
     fin = open(file_in)
@@ -66,8 +73,8 @@ except IOError, e:
 
 headers = {}
 matrices = {}
-for programme in programmes:
-    matrices[programme] = ({}, [])
+for key in mapping:
+    matrices[mapping[key]] = ({}, []) if AGGREGATE else {}
 
 csv_reader = csv.reader(fin, delimiter=',', quotechar='"')
 for cells in csv_reader:
@@ -81,39 +88,64 @@ for cells in csv_reader:
                 headers['partners'].append(i)
             elif cell == 'Theme':
                 headers['programme'] = i
+            elif cell == 'Activities (research area)':
+                headers['activities'] = i
         continue
 
-    coordinators, partners = matrices[mapping[cells[headers['programme']]]]
+    programme = cells[headers['programme']]
+    if not programme in mapping:
+        continue
 
-    coordinator = cells[headers['coordinator']]
-    if coordinator not in coordinators:
-        coordinators[coordinator] = {}
+    if AGGREGATE:
+        coordinators, partners = matrices[mapping[programme]]
 
-    for column in headers['partners']:
-        partner = cells[column]
-        if not partner:
-            continue
-        if partner not in partners:
+        coordinator = cells[headers['coordinator']]
+        if coordinator not in coordinators:
+            coordinators[coordinator] = {}
+    
+        for column in headers['partners']:
+            partner = cells[column]
+            if not partner:
+                continue
+            if partner not in partners:
+                partners.append(partner)
+            if partner not in coordinators[coordinator]:
+                coordinators[coordinator][partner] = 0
+            coordinators[coordinator][partner] += 1
+    else:
+        calls = matrices[mapping[programme]]
+        
+        activities = cells[headers['activities']]
+        if activities not in calls:
+            calls[activities] = []
+        coordinator = cells[headers['coordinator']]
+        partners = []
+        for column in headers['partners']:
+            partner = cells[column]
+            if not partner:
+                continue
             partners.append(partner)
-        if partner not in coordinators[coordinator]:
-            coordinators[coordinator][partner] = 0
-        coordinators[coordinator][partner] += 1
-
+        calls[activities].append((coordinator, partners))
 
 
 for matrix in matrices:
-    if len(coordinators) == 0: continue
+    if AGGREGATE:
+        coordinators, partners = matrices[matrix]
+        if len(coordinators) == 0: continue
+    else:
+        calls = matrices[matrix]
+        if len(calls) == 0: continue
 
-    file_out = 'matrix_%s.csv' % (matrix)
+    file_out = 'matrix_%s.%s' % (matrix, out_format)
     fout = open(file_out, 'w')
-    csv_writer = csv.writer(fout, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
-    csv_writer.writerow([''] + partners)
 
-    for coordinator in coordinators:
-        row = [coordinator]
-        for partner in partners:
-            value = 0
-            if partner in coordinators[coordinator]:
-                value = coordinators[coordinator][partner]
-            row.append(unicode(value))
-        csv_writer.writerow(row)
+    if out_format == 'csv':
+        create_csv(fout, coordinators, partners)
+    elif out_format == 'net':
+        create_net(fout, coordinators, partners)
+    elif out_format == '1.txt':
+        create_txt1(fout, coordinators, partners)
+    elif out_format == '2.txt':
+        create_txt2(fout, calls)
+    
+    fout.close()

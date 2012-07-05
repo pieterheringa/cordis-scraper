@@ -1,5 +1,7 @@
-gevent==0.13.6
-greenlet==0.3.1
-requests==0.6.1
+gevent==0.13.7
+greenlet==0.4.0
 tablib==0.9.11
-redis==2.4.9
+redis==2.4.13
+
+requests==0.13.2
+BeautifulSoup==3.2.1

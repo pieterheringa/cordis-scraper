@@ -7,32 +7,30 @@ import logging
 import requests
 import tablib
 import zlib
-#import shelve
 import re
 import sys
 from collections import namedtuple
 import htmlentitydefs
-from BeautifulSoup import BeautifulSoup, NavigableString, Tag
+from BeautifulSoup import BeautifulSoup, NavigableString
 from redis import Redis
 
 import gevent
 from gevent.queue import JoinableQueue, Queue
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 
-Person = namedtuple('Person', ['name', 'phone', 'fax'])
 Project = namedtuple('Project', ['theme', 'activities', 'acronym',
-                                 'name', 'start_date', 'end_date',
-                                 'duration', 'cost', 'funding',
+                                 'start_date', 'end_date',
+                                 'cost', 'funding',
                                  'status', 'contract_type',
                                  'coordinator', 'partners',
-                                 'contact_person', 'reference'])
+                                 'contact_person', 'reference', 'record'])
 
 NUM_THEME_WORKER_THREADS = 4
 NUM_PROJECT_WORKER_THREADS = 10
 
 THEME_URL = "http://cordis.europa.eu/fetch?CALLER=FP7_PROJ_EN&QM_EP_PGA_A=%(theme)s"
-#project_cache = None
+PROJECT_URL = "http://cordis.europa.eu/newsearch/getDoc?doctype=PROJ&xslt-template=projects/xsl/projectdet_en.xslt&rcn=%(project_id)s"
 
 def theme_worker():
     def get_projects(doc):
@@ -65,11 +63,33 @@ def theme_worker():
                 except AttributeError:
                     break
                 url = "http://cordis.europa.eu" + next_
-        except:
+        except Exception, e:
             logging.error("THEME_WORKER: Error for url: %s", url)
+            logging.error(e)
         finally:
             logging.info('THEME: %s finished, %d projects', repr(theme), count)
             q.task_done()
+
+
+def _get_p_br_entry(doc, name):
+    try:
+        regex = re.compile('{0}[ ]*:?[ ]*'.format(name), re.IGNORECASE)
+        text = doc.find(text=regex)
+
+        if not text:
+            return ''
+
+        p = text.parent.nextSibling
+        while p is not None and (not isinstance(p, NavigableString) or not p.strip()):
+            p = p.nextSibling
+
+        if p is None:
+            p = text.parent.text
+
+        return re.sub(regex, '', p).strip(": \t|\\/")
+    except:
+        logging.error("FAILED ON ``{1}'': {0}".format(doc, name))
+        raise
 
 
 def project_worker():
@@ -78,8 +98,9 @@ def project_worker():
 
     re_query = re.compile("QUERY=[a-zA-Z0-9\:]+")
     max_partners = 0
-    red = Redis(host="192.168.1.175", db=6)
+    red = Redis(host="127.0.0.1", db=6)
     while True:
+        url = ""
         try:
             theme, url = project_queue.get()
             url = str(url)
@@ -91,86 +112,66 @@ def project_worker():
             try:
                 page = zlib.decompress(value)
             except:
-                r = requests.get(url)
+                try:
+                    r = requests.get(url)
+                except:
+                    logging.error("unable to fetch {0}".format(url))
+                    continue
+
                 if not r.ok:
                    logging.error("Request failed for url: %s", url)
                    continue
+
+                # in order to retrieve the actual content of the page, which
+                # is loaded through ajax, we need to find the id of this
+                # project and load the actual URL
                 page = r.content
+                doc = BeautifulSoup(page)
+                project_id = doc.find('input', attrs={'name':"REF"}).get('value')
+                project_url = PROJECT_URL % {'project_id': project_id}
+
+                r = requests.get(project_url)
+                page = r.content
+
                 red.set(key, zlib.compress(page, 9))
 
-            doc = BeautifulSoup(page)
-            content = doc.find(id="textcontent")
-            info = content.find(text="Project details").findParent("table").find(text="Project Acronym:").findParent("td")
-            coordinator_table = content.find(text="Coordinator")
-            participant_table = content.find(text="Participants")
-            offset = 1
-            if not participant_table:
-                participant_table = content.find(text="Beneficiaries")
-                offset = 0
-            partners_info = participant_table.findParent("table")
-            partners_list = [x.text for x in partners_info.findAll("td")][offset:]
+            content = BeautifulSoup(page, convertEntities="html", smartQuotesTo="html", fromEncoding="utf-8")
 
-            research_area = content.find(text="Research area:")
-            activities = unescape(research_area.parent.parent.getText()[len("Research area:"):].strip()) if research_area else "-"
-            name = unescape(content.find("h4").getText().strip())
-            acronym = unescape(info.find(text="Project Acronym:").parent.nextSibling.strip())
+            # extract useful chunks of content
+            data_info = content.find(attrs={'class':'projdates'})
+            data_coordinator = content.find(attrs={'class': 'projcoord'})
+            data_details = content.find(attrs={'class': 'projdet'})
+            data_participants = content.find(attrs={'class': 'participants'})
 
-            start_date = unescape(info.find(text="Start Date:").parent.nextSibling.strip())
-            end_date = unescape(info.find(text="End Date:").parent.nextSibling.strip())
-            duration = unescape(info.find(text="Duration:").parent.nextSibling.strip())
-            cost = convert_to_currency(unescape(info.find(text="Project Cost:").parent.nextSibling.strip()))
-            funding = convert_to_currency(unescape(info.find(text="Project Funding:").parent.nextSibling.strip()))
-            status = unescape(info.find(text="Project Status:").parent.nextSibling.strip())
-            contract_type = unescape(info.find(text="Contract Type:").parent.nextSibling.strip())
-            partners = [unescape("%s, %s" % (x[0],x[1])) for x in zip(partners_list[0::2], partners_list[1::2])]
-            reference = unescape(info.find(text="Project Reference:").parent.nextSibling.strip())
-
-            if coordinator_table:
-                contact_info = coordinator_table.findParent("table").find(text="Contact Person:").findParent("td")
-                contact_info_tokens = contact_info.text.split("<br />")
-                organization_info = coordinator_table.findParent("table").find(text="Organisation:").findParent("td")
-
-                coordinator = unescape(organization_info.text[len("Organisation:"):])
-                contact_name = unescape(contact_info_tokens[0][contact_info_tokens[0].find("Name:")+5:].strip()) if len(contact_info_tokens) > 0 else ""
-                contact_phone = unescape(contact_info_tokens[1][contact_info_tokens[1].find("Tel:")+4:].strip()) if len(contact_info_tokens) > 1 else ""
-                contact_fax = unescape(contact_info_tokens[2][contact_info_tokens[2].find("fax:")+5:].strip()) if len(contact_info_tokens) > 2 else ""
-                contact = Person(contact_name, contact_phone, contact_fax)
+            # extract useful information about this project
+            activities = _get_p_br_entry(data_details, "subprogramme area")
+            acronym = content.find('h1').text
+            if data_info:
+                start_date = _get_p_br_entry(data_info, "from")
+                end_date = _get_p_br_entry(data_info, "to")
             else:
-                institution = content.find(text="Host Institution").findParent("tr").nextSibling.nextSibling
-                node = institution.contents[0].contents[0]
+                start_date = ''
+                end_date = ''
+            cost = convert_to_currency(_get_p_br_entry(data_details, "total cost"))
+            funding = convert_to_currency(_get_p_br_entry(data_details, "EU contribution"))
+            status = _get_p_br_entry(data_details, "status")
+            contract_type = _get_p_br_entry(data_details, "contract type")
+            coordinator = extract_institution(data_coordinator)
+            contact = _get_p_br_entry(data_coordinator, "administrative contact")
+            reference = _get_p_br_entry(data_details, "project reference")
+            record = _get_p_br_entry(content, "record number")
 
-                text = ""
-                coordinator = ""
-                contact_name = ""
-                contact_phone = ""
-                contact_fax = ""
-                while True:
-                    if type(node) == NavigableString:
-                        if not coordinator:
-                            text += (node + " ").strip()
-                        else:
-                            tokens = node.split(":")
-                            if tokens[0] == "Contact":
-                                contact_name = tokens[1].strip()
-                            elif tokens[0] == "Tel":
-                                contact_phone = tokens[1].strip()
-                            elif tokens[0] == "Fax":
-                                contact_fax = tokens[1].strip()
-                    elif type(node) == Tag and node.name == "hr":
-                        coordinator = text.strip()
-                        text = ""
-                    node = node.nextSibling
-                    if not node:
-                        break
+            partners = []
+            if data_participants is not None:
+                for participant in data_participants.findAll(attrs={'class': 'participant'}):
+                    partners.append(extract_institution(participant))
 
-                contact = Person(contact_name, contact_phone, contact_fax)
-
-            if max_partners < len(partners):
-                max_partners = len(partners)
-            project = Project(theme, activities, acronym, name, start_date,
-                              end_date, duration, cost, funding,
+            project = Project(theme, activities, acronym, start_date,
+                              end_date, cost, funding,
                               status, contract_type, coordinator,
-                              partners, contact, reference)
+                              partners, contact, reference, record)
+
+            max_partners = max(max_partners, len(partners))
 
             length_queue.put(len(partners))
             out_queue.put(project)
@@ -196,19 +197,16 @@ def get_themes():
             continue
         yield option
 
+
 def convert_to_currency(string):
-    toks = string.split()
-    result = float(toks[0])
-    if "million" in toks:
-        result *= 1000000
+    return string.replace('EUR', '').replace(' ', '')
 
-    # if `string` contains something we don't know, we should probably not convert it,
-    # but leave it as it is...
-    for tok in toks[1:]:
-        if tok not in ["million", "euro"]:
-            return string
 
-    return result
+def extract_institution(obj):
+    return u"{0} - COUNTRY: {1}".format(
+        obj.find('div', attrs={'class': 'name'}).text,
+        obj.find('div', attrs={'class': 'country'}).text
+    ).replace(u'(+)', u'')
 
 
 def get_timestamp():
@@ -262,7 +260,7 @@ if __name__ == "__main__":
     for item in get_themes():
         q.put(item)
 #        i += 1
-#        if i > 2:
+#        if i >= 1:
 #            break
 
     try:
@@ -270,9 +268,7 @@ if __name__ == "__main__":
         project_queue.join()
     except KeyboardInterrupt:
         logging.info('CTRL-C: save before exit')
-#        project_cache.close()
         raise
-#    project_cache.close()
 
     length_queue.put(StopIteration)
     max_length = 0
@@ -283,19 +279,17 @@ if __name__ == "__main__":
     out_queue.put(StopIteration)
     data = None
 
-    headers = ["Theme", "Activities (research area)", "Project Acronym", "Start Date", "End Date", "Duration", "Project Cost", "Project Funding", "Project Status", "Contract Type", "Coordinator"]
+    headers = ["Theme", "Activities (research area)", "Project Acronym", "Start Date", "End Date", "Project Cost", "Project Funding", "Project Status", "Contract Type", "Coordinator", "Project Reference", "Record"]
     for i in range(max_length):
         headers.append("Partner %d" % (i+1))
-    headers.extend(["Person Coordinator", "Phone", "Fax", "Project Reference"])
     data = tablib.Dataset(headers=headers)
     for i, out in enumerate(out_queue):
         logging.info('OUT: %d', i)
-        row = [out.theme, out.activities, out.acronym, out.start_date, out.end_date, out.duration, out.cost, out.funding, out.status, out.contract_type, out.coordinator]
+        row = [out.theme, out.activities, out.acronym, out.start_date, out.end_date, out.cost, out.funding, out.status, out.contract_type, out.coordinator, out.reference, out.record]
         for i in out.partners:
             row.append(i)
         for i in range(max_length - len(out.partners)):
             row.append("")
-        row.extend([out.contact_person.name, out.contact_person.phone, out.contact_person.fax, out.reference])
         data.append(row)
 
     with open('projects.%s.csv' % (get_timestamp(),), 'w') as f:

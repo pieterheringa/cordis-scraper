@@ -72,6 +72,7 @@ data_info = content.find(attrs={'class':'projdates'})
 data_coordinator = content.find(attrs={'class': 'projcoord'})
 data_details = content.find(attrs={'class': 'projdet'})
 data_participants = content.find(attrs={'class': 'participants'})
+data_footer = content.find(attrs={'id': 'recinfo'})
 
 # extract useful information about this project
 print "ACTIVITY: %s" % _get_p_br_entry(data_details, "subprogramme area")
@@ -93,7 +94,7 @@ print "CONTRACT TYPE: %s" %  _get_p_br_entry(data_details, "contract type")
 print "COORDINATOR: %s" %  extract_institution(data_coordinator)
 print "CONTACT: %s" % _get_p_br_entry(data_coordinator, "administrative contact")
 print "REFERENCE ##: %s" %  _get_p_br_entry(data_details, "project reference")
-print "RECORD ##: %s" %  _get_p_br_entry(content, "record number")
+print "RECORD ##: %s" %  _get_p_br_entry(data_footer, "record number")
 
 partners = []
 if data_participants is not None:

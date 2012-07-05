@@ -142,6 +142,7 @@ def project_worker():
             data_coordinator = content.find(attrs={'class': 'projcoord'})
             data_details = content.find(attrs={'class': 'projdet'})
             data_participants = content.find(attrs={'class': 'participants'})
+            data_footer = content.find(attrs={'id': 'recinfo'})
 
             # extract useful information about this project
             activities = _get_p_br_entry(data_details, "subprogramme area")
@@ -159,7 +160,7 @@ def project_worker():
             coordinator = extract_institution(data_coordinator)
             contact = _get_p_br_entry(data_coordinator, "administrative contact")
             reference = _get_p_br_entry(data_details, "project reference")
-            record = _get_p_br_entry(content, "record number")
+            record = _get_p_br_entry(data_footer, "record number")
 
             partners = []
             if data_participants is not None:

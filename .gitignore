@@ -1,0 +1,7 @@
+*.py[co]
+matrix_*.net
+matrix_*.csv
+matrix_*.txt
+projects_*.csv
+
+.idea

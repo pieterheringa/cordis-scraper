@@ -2,6 +2,7 @@
  a adjacency matrix of Coordinators and Partners """
 __author__ = 'stefanop'
 
+import os
 import csv
 import sys
 from utils import create_csv, create_net, create_txt1, create_txt2
@@ -58,6 +59,7 @@ programmes = {
 AGGREGATE = True if out_format != "2.txt" else False
 SUB_MATRICES = True
 ENABLED = ['Cooperation', 'Capacities']
+OUT_DIR = 'out/'
 
 mapping = {}
 for programme in programmes:
@@ -136,16 +138,22 @@ for matrix in matrices:
         calls = matrices[matrix]
         if len(calls) == 0: continue
 
-    file_out = 'matrix_%s.%s' % (matrix, out_format)
+    if not os.path.exists(OUT_DIR):
+        os.makedirs(OUT_DIR)
+
+    file_out = '%smatrix_%s.%s' % (OUT_DIR, matrix, out_format)
+    renaming_out = 'matrix_%s_renaming.txt' % matrix
     fout = open(file_out, 'w')
+    rfout = open(renaming_out, 'w')
 
     if out_format == 'csv':
         create_csv(fout, coordinators, partners)
     elif out_format == 'net':
         create_net(fout, coordinators, partners)
     elif out_format == '1.txt':
-        create_txt1(fout, coordinators, partners)
+        create_txt1(fout, coordinators, partners, rfout)
     elif out_format == '2.txt':
         create_txt2(fout, calls)
-    
+
+    rfout.close()
     fout.close()

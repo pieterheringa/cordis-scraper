@@ -13,11 +13,12 @@ from collections import namedtuple
 import htmlentitydefs
 from BeautifulSoup import BeautifulSoup, NavigableString
 from redis import Redis
+from urlparse import urlparse, parse_qs
 
 import gevent
 from gevent.queue import JoinableQueue, Queue
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.WARNING)
 
 Project = namedtuple('Project', ['theme', 'activities', 'acronym',
                                  'start_date', 'end_date',
@@ -28,6 +29,9 @@ Project = namedtuple('Project', ['theme', 'activities', 'acronym',
 
 NUM_THEME_WORKER_THREADS = 4
 NUM_PROJECT_WORKER_THREADS = 10
+REQUESTS_CONFIG = {
+    'max_retries': 9999,
+}
 
 THEME_URL = "http://cordis.europa.eu/fetch?CALLER=FP7_PROJ_EN&QM_EP_PGA_A=%(theme)s"
 PROJECT_URL = "http://cordis.europa.eu/newsearch/getDoc?doctype=PROJ&xslt-template=projects/xsl/projectdet_en.xslt&rcn=%(project_id)s"
@@ -48,7 +52,7 @@ def theme_worker():
         url = THEME_URL % {'theme': theme}
         try:
             while True:
-                r = requests.get(url)
+                r = requests.get(url, config=REQUESTS_CONFIG)
                 if not r.ok:
                     logging.error("Request failed for url: %s", url)
                     continue
@@ -90,7 +94,7 @@ def _get_p_br_entry(doc, name):
     except:
         logging.error("FAILED ON ``{1}'': {0}".format(doc, name))
         raise
-
+from requests.packages.urllib3.connectionpool import *
 
 def project_worker():
 #    global project_cache
@@ -102,8 +106,8 @@ def project_worker():
     while True:
         url = ""
         try:
-            theme, url = project_queue.get()
-            url = str(url)
+            theme, orig_url = project_queue.get()
+            url = str(orig_url)
             match = re_query.search(url)
             key = url.replace( url[match.start():match.end()+1], "" )
             logging.info('PROJECT: %s: %s' % (theme, url))
@@ -112,11 +116,8 @@ def project_worker():
             try:
                 page = zlib.decompress(value)
             except:
-                try:
-                    r = requests.get(url)
-                except:
-                    logging.error("unable to fetch {0}".format(url))
-                    continue
+                logging.warning('CACHE MISS ON {0}'.format(key))
+                r = requests.get(url, config=REQUESTS_CONFIG)
 
                 if not r.ok:
                    logging.error("Request failed for url: %s", url)
@@ -127,10 +128,16 @@ def project_worker():
                 # project and load the actual URL
                 page = r.content
                 doc = BeautifulSoup(page)
-                project_id = doc.find('input', attrs={'name':"REF"}).get('value')
+                try:
+                    project_id = doc.find('input', attrs={'name':"REF"}).get('value')
+                except AttributeError:
+                    logging.error("UNABLE TO FIND ``input name=ref'' at {0} into {1}".format(url, doc))
+                    # extract project_id in a least ``politically-correct'' way
+                    project_id = parse_qs(urlparse(url).query)['RCN'][0]
+
                 project_url = PROJECT_URL % {'project_id': project_id}
 
-                r = requests.get(project_url)
+                r = requests.get(project_url, config=REQUESTS_CONFIG)
                 page = r.content
 
                 red.set(key, zlib.compress(page, 9))
@@ -143,6 +150,12 @@ def project_worker():
             data_details = content.find(attrs={'class': 'projdet'})
             data_participants = content.find(attrs={'class': 'participants'})
             data_footer = content.find(attrs={'id': 'recinfo'})
+
+            if data_details is None:
+                logging.error("You're kidding me, no details page...")
+                logging.error("This page has something wrong, I'm going to remove it from the cache...")
+                red.delete(key)
+                raise
 
             # extract useful information about this project
             activities = _get_p_br_entry(data_details, "subprogramme area")
@@ -186,7 +199,7 @@ def project_worker():
 
 def get_themes():
     # http://cordis.europa.eu/fp7/projects_en.html
-    r = requests.get('http://cordis.europa.eu/fp7/projects_en.html')
+    r = requests.get('http://cordis.europa.eu/fp7/projects_en.html', config=REQUESTS_CONFIG)
     assert r.status_code == 200, "Error retrieving themes"
     doc = BeautifulSoup(r.content)
     for option in doc.find(id="themes"):

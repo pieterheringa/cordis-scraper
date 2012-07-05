@@ -38,29 +38,30 @@ def create_net(fout, coordinators, partners):
     fout.write(arcs)
 
 
-def create_txt1(fout, coordinators, partners):
+def create_txt1(fout, coordinators, partners, rfout=None):
     n_tot = 0
     p_mapping = {}
     p_counter = 0
     data = ""
     for c_idx, coordinator in enumerate(coordinators):
         data += "C%d " % c_idx
+        if rfout: rfout.write("C%d : %s: \r\n" % (c_idx, coordinator))
         n_tot += 1
         for partner in coordinators[coordinator]:
             if partner not in p_mapping:
                 p_counter += 1
                 n_tot += 1
                 p_mapping[partner] = "P%d" % p_counter
+                if rfout: rfout.write("P%d : %s\r\n" % (p_counter, partner))
             data += "%s " % p_mapping[partner]
-        data += "\n"
+        data += "\r\n"
 
-    fout.write("""dl n=%d
-format=nodelist1
-labels embedded
-
-data:
-%s
-""" % (n_tot, data))
+    fout.write("dl n=%d\r\n" \
+               "format=nodelist1\r\n" \
+               "labels embedded\r\n" \
+                "\r\n" \
+                "data:\r\n" \
+                "%s"  % (n_tot, data))
 
 
 def create_txt2(fout, calls):
@@ -87,15 +88,14 @@ def create_txt2(fout, calls):
                     p_counter += 1
                     p_mapping[partner] = "P%04d" % p_counter
                 cells.append(p_mapping[partner])
-            data += "%s_%03d\t%s\n" % (activities_cleaned, call_counter, ",\t".join(cells))
+            data += "%s_%03d\t%s\r\n" % (activities_cleaned, call_counter, ",\t".join(cells))
             n_rows += 1
             n_cols = max(n_cols, len(cells) + 1)
 
-    fout.write("""dl nr=%d, nc=%d
-format = nodelist2
-row labels embedded
-column labels embedded
-
-data:
-%s
-""" % (n_rows, n_cols, data))
+    fout.write("dl nr=%d, nc=%d\r\n" \
+                "format = nodelist2\r\n" \
+                "row labels embedded\r\n" \
+                "column labels embedded\r\n" \
+                "\r\n" \
+                "data:\r\n" \
+                "%s" % (n_rows, n_cols, data))

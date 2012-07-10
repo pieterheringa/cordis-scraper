@@ -1,101 +1,14 @@
-import re
-import csv
-
-def create_csv(fout, coordinators, partners):
-    csv_writer = csv.writer(fout, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
-    csv_writer.writerow([''] + partners)
-
-    for coordinator in coordinators:
-        row = [coordinator]
-        for partner in partners:
-            value = 0
-            if partner in coordinators[coordinator]:
-                value = coordinators[coordinator][partner]
-            row.append(unicode(value))
-        csv_writer.writerow(row)
 
 
-def create_net(fout, coordinators, partners):
-
-    counter = 1
-    arcs = ''
-    mapping_c = {}
-    mapping_p = {}
-    fout.write('*vertices\n')
-    for coordinator in coordinators:
-        if coordinator not in mapping_c:
-            mapping_c[coordinator] = counter
-            fout.write('\t%d\t"COORDINATOR %s"\n' % (counter, coordinator.replace('"', '\"')))
-            counter += 1
-
-        for partner in partners:
-            if partner not in mapping_p:
-                mapping_p[partner] = counter
-                fout.write('\t%d\t"PARTNER %s"\n' % (counter, partner.replace('"', '\"')))
-                counter += 1
-            arcs += '\t%d %d\n' % (mapping_c[coordinator], mapping_p[partner])
-    fout.write('*arcs\n')
-    fout.write(arcs)
+def cache_me(fun):
+    _cache = {}
+    def _f(an_arg):
+        if an_arg not in _cache:
+            _cache[an_arg] = fun(an_arg)
+        return _cache[an_arg]
+    return _f
 
 
-def create_txt1(fout, coordinators, partners, rfout=None):
-    n_tot = 0
-    p_mapping = {}
-    p_counter = 0
-    data = ""
-    for c_idx, coordinator in enumerate(coordinators):
-        data += "C%d " % c_idx
-        if rfout: rfout.write("C%d : %s: \r\n" % (c_idx, coordinator))
-        n_tot += 1
-        for partner in coordinators[coordinator]:
-            if partner not in p_mapping:
-                p_counter += 1
-                n_tot += 1
-                p_mapping[partner] = "P%d" % p_counter
-                if rfout: rfout.write("P%d : %s\r\n" % (p_counter, partner))
-            data += "%s " % p_mapping[partner]
-        data += "\r\n"
-
-    fout.write("dl n=%d\r\n" \
-               "format=nodelist1\r\n" \
-               "labels embedded\r\n" \
-                "\r\n" \
-                "data:\r\n" \
-                "%s"  % (n_tot, data))
-
-
-def create_txt2(fout, calls):
-    n_rows = 0
-    n_cols = 0
-    c_mapping = {}
-    p_mapping = {}
-    c_counter = 0
-    p_counter = 0
-    data = u""
-    for activities in calls:
-        activities_cleaned = re.sub("[^a-z0-9]+", "_", activities[:activities.find(' ')].lower())
-        for call_counter, call in enumerate(calls[activities]):
-            coordinator, partners = call
-
-            if coordinator not in c_mapping:
-                c_counter += 1
-                c_mapping[coordinator] = u"C%04d" % c_counter
-
-
-            cells = [c_mapping[coordinator]]
-            for partner in partners:
-                if partner not in p_mapping:
-                    p_counter += 1
-                    p_mapping[partner] = u"P%04d" % p_counter
-                cells.append(p_mapping[partner])
-            data += u"%s_%03d\t%s\r\n" % (activities_cleaned, call_counter, ",\t".join(cells))
-            n_rows += 1
-            n_cols = max(n_cols, len(cells) + 1)
-
-    fout.write(u"dl nr=%d, nc=%d\r\n" \
-                u"format = nodelist2\r\n" \
-                u"row labels embedded\r\n" \
-                u"column labels embedded\r\n" \
-                u"\r\n" \
-                u"data:\r\n" \
-                u"%s" % (n_rows, n_cols, data))
+@cache_me
+def project_ordering_key(node):
+    return int(node[2:])

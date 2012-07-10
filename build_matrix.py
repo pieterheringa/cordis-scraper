@@ -1,159 +1,68 @@
 """ Given the csv file created by `down.py`, builds
  a adjacency matrix of Coordinators and Partners """
-__author__ = 'stefanop'
+from operator import itemgetter
 
 import os
-import csv
 import sys
-from utils import create_csv, create_net, create_txt1, create_txt2
+import codecs
+from clint import args
+from clint.textui import puts, indent, progress
+from utils import project_ordering_key
+from utils.writer import create_txt1, create_txt2
+from utils.grouper import group_projects, aggregate
+from utils.reader import read_project_file
 
-if len(sys.argv) < 3:
+
+if len(args.files) != 1:
     print "Usage:"
-    print "python %s input-file <csv|net|1.txt|2.txt>" % sys.argv[0]
+    print "python %s input-file [options]" % sys.argv[0]
+    print "Available options:"
+    with indent():
+        puts("--aggregate, -a\t\tAggregate output by entities (coordinators and partners)")
+        puts("--by-programme, -p\t\tOutput will be grouped by programme")
     exit(1)
 
-file_in = sys.argv[1]
-out_format = sys.argv[2]
 
-assert(out_format in ("csv", "net", "1.txt", "2.txt"))
-
-programmes = {
-    'General': ['FP7',
-                ],
-
-    'Cooperation': ['FP7-HEALTH',
-                    'FP7-COORDINATION',
-                    'FP7-ENERGY',
-                    'FP7-ENVIRONMENT',
-                    'FP7-ICT',
-                    'FP7-KBBE',
-                    'FP7-NMP',
-                    'FP7-SECURITY',
-                    'FP7-SPACE',
-                    'FP7-SSH',
-                    'FP7-TRANSPORT',
-                    'FP7-JTI',
-                    ],
-
-    'Euratom': ['FP7-EURATOM-FUSION',
-                'FP7-EURATOM-FISSION'
-                ],
-
-    'Ideas': ['FP7-IDEAS',
-              ],
-
-    'Capacities': ['FP7-INCO',
-                   'FP7-INFRASTRUCTURES',
-                   'FP7-POTENTIAL',
-                   'FP7-REGIONAL',
-                   'FP7-SIS',
-                   'FP7-SME',
-                   ],
-
-    'People': ['FP7-PEOPLE',
-               ],
-
-    'JRC': []
-}
-
-AGGREGATE = True if out_format != "2.txt" else False
-SUB_MATRICES = True
-ENABLED = ['Cooperation', 'Capacities']
 OUT_DIR = 'out/'
 
-mapping = {}
-for programme in programmes:
-    for name in programmes[programme]:
-        if programme in ENABLED or '*' in ENABLED:
-            mapping[name] = programme if not SUB_MATRICES else name
+AGGREGATE = '-a' in args.flags or '--aggregate' in args.flags
+BY_PROGRAMME = '-p' in args.flags or '--by-programme' in args.flags
+FILE_IN = args.files[0]
+
 
 try:
-    fin = open(file_in)
-except IOError, e:
+    fin = open(FILE_IN, 'rb')
+except Exception, e:
     print e
     exit(2)
 
-headers = {}
-matrices = {}
-for key in mapping:
-    matrices[mapping[key]] = ({}, []) if AGGREGATE else {}
 
-csv_reader = csv.reader(fin, delimiter=',', quotechar='"')
-for cells in csv_reader:
-    if not headers:
-        for i, cell in enumerate(cells):
-            if cell == 'Coordinator':
-                headers['coordinator'] = i
-            elif cell.find('Partner') == 0:
-                if 'partners' not in headers:
-                    headers['partners'] = []
-                headers['partners'].append(i)
-            elif cell == 'Theme':
-                headers['programme'] = i
-            elif cell == 'Activities (research area)':
-                headers['activities'] = i
-        continue
+projects, entity_mapping = read_project_file(fin)
+matrices = group_projects(projects, by_programme=BY_PROGRAMME)
 
-    programme = cells[headers['programme']]
-    if not programme in mapping:
+
+if not os.path.exists(OUT_DIR):
+    os.makedirs(OUT_DIR)
+
+renaming_out = '%sRENAMING.txt' % (OUT_DIR)
+with codecs.open(renaming_out, 'w', encoding='utf-8') as rfout:
+    for key, value in sorted(entity_mapping.iteritems(), key=lambda x: project_ordering_key(x[1])):
+        rfout.write(u"{1}\t\t{0}\n".format(key, entity_mapping[key]))
+
+print "Writing output matrices"
+for theme, matrix in progress.bar(matrices.iteritems(), expected_size=len(matrices)):
+    if not len(matrix):
         continue
 
     if AGGREGATE:
-        coordinators, partners = matrices[mapping[programme]]
+        file_out = '{0}matrix_network_{1}.txt'.format(OUT_DIR, theme)
 
-        coordinator = cells[headers['coordinator']]
-        if coordinator not in coordinators:
-            coordinators[coordinator] = {}
-    
-        for column in headers['partners']:
-            partner = cells[column]
-            if not partner:
-                continue
-            if partner not in partners:
-                partners.append(partner)
-            if partner not in coordinators[coordinator]:
-                coordinators[coordinator][partner] = 0
-            coordinators[coordinator][partner] += 1
+        aggreg_matrix = aggregate(matrix)
+
+        with codecs.open(file_out, 'w', encoding='utf-8') as fout:
+            create_txt1(fout, aggreg_matrix)
     else:
-        calls = matrices[mapping[programme]]
-        
-        activities = cells[headers['activities']]
-        if activities not in calls:
-            calls[activities] = []
-        coordinator = cells[headers['coordinator']]
-        partners = []
-        for column in headers['partners']:
-            partner = cells[column]
-            if not partner:
-                continue
-            partners.append(partner)
-        calls[activities].append((coordinator, partners))
+        file_out = '{0}matrix_calls_{1}.txt'.format(OUT_DIR, theme)
 
-
-for matrix in matrices:
-    if AGGREGATE:
-        coordinators, partners = matrices[matrix]
-        if len(coordinators) == 0: continue
-    else:
-        calls = matrices[matrix]
-        if len(calls) == 0: continue
-
-    if not os.path.exists(OUT_DIR):
-        os.makedirs(OUT_DIR)
-
-    file_out = '%smatrix_%s.%s' % (OUT_DIR, matrix, out_format)
-    fout = open(file_out, 'w')
-
-    if out_format == 'csv':
-        create_csv(fout, coordinators, partners)
-    elif out_format == 'net':
-        create_net(fout, coordinators, partners)
-    elif out_format == '1.txt':
-        renaming_out = '%smatrix_%s_renaming.txt' % (OUT_DIR, matrix)
-        rfout = open(renaming_out, 'w')
-        create_txt1(fout, coordinators, partners, rfout)
-        rfout.close()
-    elif out_format == '2.txt':
-        create_txt2(fout, calls)
-
-    fout.close()
+        with codecs.open(file_out, 'w', encoding='utf-8') as fout:
+            create_txt2(fout, matrix)

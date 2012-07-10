@@ -34,7 +34,7 @@ def _convert_to_right_type(a_dict):
     from datetime import date
 
     for key in a_dict:
-        if not isinstance(a_dict[key], unicode):
+        if not isinstance(a_dict[key], (unicode, str)):
             continue
 
         try:

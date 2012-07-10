@@ -73,11 +73,12 @@ def aggregate(projects, aggregation_fun=lambda _: 1):
         nodes = [project['Coordinator']] + project['partners']
         for node1 in nodes:
             for node2 in nodes:
-                if project_ordering_key(node1) <= project_ordering_key(node2):
-                    if node1 not in graph:
-                        graph[node1] = {}
-                    if node2 not in graph[node1]:
-                        graph[node1][node2] = 0
-                    graph[node1][node2] += aggregation_fun(project)
+                if node1 == node2:
+                    continue
+                if node1 not in graph:
+                    graph[node1] = {}
+                if node2 not in graph[node1]:
+                    graph[node1][node2] = 0
+                graph[node1][node2] += aggregation_fun(project)
 
     return graph

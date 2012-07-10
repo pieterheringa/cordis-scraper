@@ -47,7 +47,7 @@ if not os.path.exists(OUT_DIR):
 renaming_out = '%sRENAMING.txt' % (OUT_DIR)
 with codecs.open(renaming_out, 'w', encoding='utf-8') as rfout:
     for key, value in sorted(entity_mapping.iteritems(), key=lambda x: project_ordering_key(x[1])):
-        rfout.write(u"{1}\t\t{0}\n".format(key, entity_mapping[key]))
+        rfout.write(u"{1}\t\t{0}\r\n".format(key, entity_mapping[key]))
 
 print "Writing output matrices"
 for theme, matrix in progress.bar(matrices.iteritems(), expected_size=len(matrices)):

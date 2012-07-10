@@ -6,8 +6,12 @@ def create_txt1(fout, graph):
     data = ''
     for node in sorted(graph.keys(), key=project_ordering_key):
         single_nodes.add(node)
+        cells = [node]
+        for node2 in sorted(graph[node], key=project_ordering_key):
+            cells += [node2] * graph[node][node2]
+
         data += u"{0}\n".format(
-            u" ".join(sorted(graph[node].keys(), key=project_ordering_key))
+            u" \t".join(cells)
         )
 
     fout.write(u"dl n={0}\r\n" \

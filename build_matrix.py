@@ -80,7 +80,7 @@ for key in mapping:
 
 csv_reader = csv.reader(fin, delimiter=',', quotechar='"')
 for cells in csv_reader:
-    if len(headers) == 0:
+    if not headers:
         for i, cell in enumerate(cells):
             if cell == 'Coordinator':
                 headers['coordinator'] = i
@@ -142,18 +142,18 @@ for matrix in matrices:
         os.makedirs(OUT_DIR)
 
     file_out = '%smatrix_%s.%s' % (OUT_DIR, matrix, out_format)
-    renaming_out = 'matrix_%s_renaming.txt' % matrix
     fout = open(file_out, 'w')
-    rfout = open(renaming_out, 'w')
 
     if out_format == 'csv':
         create_csv(fout, coordinators, partners)
     elif out_format == 'net':
         create_net(fout, coordinators, partners)
     elif out_format == '1.txt':
+        renaming_out = '%smatrix_%s_renaming.txt' % (OUT_DIR, matrix)
+        rfout = open(renaming_out, 'w')
         create_txt1(fout, coordinators, partners, rfout)
+        rfout.close()
     elif out_format == '2.txt':
         create_txt2(fout, calls)
 
-    rfout.close()
     fout.close()

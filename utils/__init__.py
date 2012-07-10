@@ -11,4 +11,7 @@ def cache_me(fun):
 
 @cache_me
 def project_ordering_key(node):
-    return int(node[2:])
+    try:
+        return int(node[2:])
+    except ValueError:
+        return node

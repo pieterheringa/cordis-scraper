@@ -71,7 +71,7 @@ def create_txt2(fout, calls):
     p_mapping = {}
     c_counter = 0
     p_counter = 0
-    data = ""
+    data = u""
     for activities in calls:
         activities_cleaned = re.sub("[^a-z0-9]+", "_", activities[:activities.find(' ')].lower())
         for call_counter, call in enumerate(calls[activities]):
@@ -79,23 +79,23 @@ def create_txt2(fout, calls):
 
             if coordinator not in c_mapping:
                 c_counter += 1
-                c_mapping[coordinator] = "C%04d" % c_counter
+                c_mapping[coordinator] = u"C%04d" % c_counter
 
 
             cells = [c_mapping[coordinator]]
             for partner in partners:
                 if partner not in p_mapping:
                     p_counter += 1
-                    p_mapping[partner] = "P%04d" % p_counter
+                    p_mapping[partner] = u"P%04d" % p_counter
                 cells.append(p_mapping[partner])
-            data += "%s_%03d\t%s\r\n" % (activities_cleaned, call_counter, ",\t".join(cells))
+            data += u"%s_%03d\t%s\r\n" % (activities_cleaned, call_counter, ",\t".join(cells))
             n_rows += 1
             n_cols = max(n_cols, len(cells) + 1)
 
-    fout.write("dl nr=%d, nc=%d\r\n" \
-                "format = nodelist2\r\n" \
-                "row labels embedded\r\n" \
-                "column labels embedded\r\n" \
-                "\r\n" \
-                "data:\r\n" \
-                "%s" % (n_rows, n_cols, data))
+    fout.write(u"dl nr=%d, nc=%d\r\n" \
+                u"format = nodelist2\r\n" \
+                u"row labels embedded\r\n" \
+                u"column labels embedded\r\n" \
+                u"\r\n" \
+                u"data:\r\n" \
+                u"%s" % (n_rows, n_cols, data))

@@ -100,7 +100,6 @@ def project_worker():
 #    global project_cache
     logging.info('START PROJECT WORKER')
 
-    re_query = re.compile("QUERY=[a-zA-Z0-9\:]+")
     max_partners = 0
     red = Redis(host="127.0.0.1", db=6)
     while True:
@@ -108,8 +107,11 @@ def project_worker():
         try:
             theme, orig_url = project_queue.get()
             url = str(orig_url)
-            match = re_query.search(url)
-            key = url.replace( url[match.start():match.end()+1], "" )
+            querystring = parse_qs(urlparse(url).query)
+            querystring.pop('QUERY', None)
+            querystring_list = ['{0}:{1}'.format(key, querystring[key][0])
+                                for key in querystring]
+            key = '-'.join(sorted(querystring_list))
             logging.info('PROJECT: %s: %s' % (theme, url))
 
             value = red.get(key)

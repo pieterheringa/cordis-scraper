@@ -12,6 +12,29 @@ def _build_headers(cells):
             for cell in cells]
 
 
+def _extract_call_year(activity, fallback=None):
+    """ given a string representing the activity of a project, tries to extract
+    the call year. Ex:
+
+    >>> _extract_call_year('Fission-2008-1.1.1 Gas generation and transport in support of performance assessment')
+    2008
+
+    >> FP7-PEOPLE-2011-CIG Marie-Curie Action: "Career Integration Grants"
+    """
+    def _elab_fallback(fallback):
+        return fallback[:4] if fallback and len(fallback) >= 4 else None
+
+    if not activity:
+        return _elab_fallback(fallback)
+
+    import re
+    match = re.match('.+(\d{4})', activity)
+
+    if not match:
+        return _elab_fallback(fallback)
+    return match.groups()[0]
+
+
 def _build_project(cells, headers):
     """ given a list of cells and a list of headers, return a dictionary
     mapping headers to cell contents.
@@ -25,6 +48,9 @@ def _build_project(cells, headers):
         else:
             project[key] = value
     project['partners'] = [x for x in project['partners'] if x]
+    project['call year'] = _extract_call_year(project.get('Activities (research area)', None),
+                                              project.get('Start Date', None))
+
     return project
 
 

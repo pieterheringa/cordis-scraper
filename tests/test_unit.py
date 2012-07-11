@@ -2,7 +2,7 @@
 import unittest
 from utils import project_ordering_key
 from utils.reader import read_project_file, _build_headers, _build_project,\
-    _convert_to_right_type, _adjust_name
+    _convert_to_right_type, _adjust_name, _extract_call_year
 
 
 class TestUtilsInit(unittest.TestCase):
@@ -114,6 +114,29 @@ class TestUtilsReader(unittest.TestCase):
         self.assertEqual(
             _adjust_name(u"UNIVERSIDAD COMPLUTENSE DE MADRID - COUNTRY: ESPAÑA"),
             _adjust_name(u'UNIVERSIDAD COMPLUTENSE DE MADRID. - COUNTRY: ESPAÑA'),
+        )
+
+    def test_extract_call_year(self):
+        self.assertEqual('2008',
+            _extract_call_year('Fission-2008-1.1.1 Gas generation and transport in support of performance assessment')
+        )
+        self.assertEqual('2011',
+            _extract_call_year('FP7-PEOPLE-2011-CIG Marie-Curie Action: "Career Integration Grants')
+        )
+        self.assertEqual('2011',
+            _extract_call_year('SSH.2011.7.1-1 Forward Visions on the European Research Area')
+        )
+        self.assertEqual(None,
+            _extract_call_year('ERC-AG-PE3 ERC Advanced Grant - Condensed matter physics')
+        )
+        self.assertEqual('1954',
+            _extract_call_year('ERC-AG-PE3 ERC Advanced Grant - Condensed matter physics', '1954-12-12')
+        )
+        self.assertEqual('2009',
+            _extract_call_year('FP7-PEOPLE-2009-IEF Marie Curie: "Promoting science"')
+        )
+        self.assertEqual('2007',
+            _extract_call_year('SiS.2007-2.2.1.2 Teaching methods,SiS-2007-2.2.1.1 Links between science education and research')
         )
 
 

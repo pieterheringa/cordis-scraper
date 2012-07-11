@@ -1,7 +1,8 @@
+# -*- coding: utf-8 -*-
 import unittest
 from utils import project_ordering_key
 from utils.reader import read_project_file, _build_headers, _build_project,\
-    _convert_to_right_type
+    _convert_to_right_type, _adjust_name
 
 
 class TestUtilsInit(unittest.TestCase):
@@ -84,6 +85,36 @@ class TestUtilsReader(unittest.TestCase):
 
     def test_map_entities(self):
         pass
+
+    def test_adjust_name(self):
+        self.assertEqual(
+            _adjust_name(u'Università degli studi di Trento'),
+            _adjust_name(u'Universita degli studi di Trento'),
+        )
+        self.assertEqual(
+            _adjust_name(u'Österreich'),
+            _adjust_name(u'Oesterreich'),
+        )
+        self.assertEqual(
+            _adjust_name(u'België'),
+            _adjust_name(u'Belgie'),
+        )
+        self.assertEqual(
+            _adjust_name(u'UNIVERSIDAD POLITECNICA DE MADRID - COUNTRY: ESPAÑA'),
+            _adjust_name(u'UNIVERSIDAD POLITECNICA DE MADRID - COUNTRY: ES'),
+        )
+        self.assertEqual(
+            _adjust_name(u"Universita' di Trieste"),
+            _adjust_name(u'Universita di Trieste'),
+        )
+        self.assertEqual(
+            _adjust_name(u"UNIVERSITA DEGLI STUDI DI NAPOLI FEDERICO II. - COUNTRY: Italy"),
+            _adjust_name(u'UNIVERSITA DEGLI STUDI DI NAPOLI FEDERICO II. - COUNTRY: ITALIA'),
+        )
+        self.assertEqual(
+            _adjust_name(u"UNIVERSIDAD COMPLUTENSE DE MADRID - COUNTRY: ESPAÑA"),
+            _adjust_name(u'UNIVERSIDAD COMPLUTENSE DE MADRID. - COUNTRY: ESPAÑA'),
+        )
 
 
 class TestUtilsGrouper(unittest.TestCase):

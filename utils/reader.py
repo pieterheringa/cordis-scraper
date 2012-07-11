@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """ utility functions for reading the project CSV file
 """
 import csv
@@ -47,13 +48,46 @@ def _convert_to_right_type(a_dict):
                 pass
 
 
-def _map_entities(project, entity_mapping):
+UMLAUT = u'\u0308'
+def strip_accents(s):
+    import unicodedata
+    return ''.join((
+        'e' if c == UMLAUT else c
+        for c in unicodedata.normalize('NFD', s)
+        if unicodedata.category(c) != 'Mn' or c == UMLAUT
+    ))
+
+
+def trucate_country(s):
+    import re
+    return re.sub(' - country: [\w]*', lambda x: x.group()[:11], s)
+
+
+def _adjust_name(name):
+    """ clean a name for matching
+    """
+    return trucate_country(strip_accents(
+            name.lower().replace(u'ë', u'e')
+                        .replace(u'ï', u'i')
+                        .replace(u"'", u'')
+                        .replace(u",", u'')
+                        .replace(u".", u'')
+                        .replace(u"'", u'')
+                        .replace(u"'", u'')
+        )
+    )
+
+
+def _map_entities(project, entity_codes, entity_mapping):
     """ replace Coordinator and partners with a code, and write the mapping
     in the entity_mapping
     """
     def _f(name):
+        key = _adjust_name(name)
+        if key not in entity_codes:
+            entity_codes[key] = u'N_{0}'.format(len(entity_mapping))
         if name not in entity_mapping:
-            entity_mapping[name] = u'N_{0}'.format(len(entity_mapping))
+            entity_mapping[name] = entity_codes[key]
         return entity_mapping[name]
 
     project['Coordinator'] = _f(project['Coordinator'])
@@ -79,6 +113,7 @@ def read_project_file(fin):
     headers = None
     projects = []
     entity_mapping = {}
+    entity_codes = {}
     csv_reader = _unicode_csv_reader(fin, delimiter=',', quotechar='"')
     for cells in progress.bar(csv_reader, expected_size=total):
         if not headers:
@@ -87,7 +122,7 @@ def read_project_file(fin):
         else:
             project = _build_project(cells, headers)
             _convert_to_right_type(project)
-            _map_entities(project, entity_mapping)
+            _map_entities(project, entity_codes, entity_mapping)
 
             projects.append(project)
 

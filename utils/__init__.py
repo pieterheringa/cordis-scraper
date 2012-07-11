@@ -15,3 +15,14 @@ def project_ordering_key(node):
         return int(node[2:])
     except ValueError:
         return node
+
+
+def get_min_max(collection, key=lambda x: x):
+    the_min = the_max = None
+    for obj in collection:
+        the_val = key(obj)
+        if the_min is None or the_min > the_val:
+            the_min = the_val
+        if the_max is None or the_max < the_val:
+            the_max = the_val
+    return the_min, the_max

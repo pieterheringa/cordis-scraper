@@ -1,4 +1,4 @@
-from utils import project_ordering_key
+from utils import project_ordering_key, get_min_max
 
 PROGRAMMES = {
     'General': ['FP7',
@@ -41,24 +41,40 @@ PROGRAMMES = {
 }
 
 
-def group_projects(projects, by_programme=False):
+def group_projects(projects, by_programme=False, by_year=False):
     """ group projects by theme.
     """
+
+    min_y = max_y = None
+    if by_year:
+        min_y, max_y = get_min_max(projects, key=lambda x: x['call year'])
+
     mapping = {}
     for programme in PROGRAMMES:
         for name in PROGRAMMES[programme]:
-            mapping[name] = programme if by_programme else name
+            if min_y is None or max_y is None:
+                mapping[name] = programme if by_programme else name
+            else:
+                for year in range(min_y, max_y + 1):
+                    mapping['{0}_{1}'.format(year, name)] = '{0}_{1}'.format(
+                        year, programme if by_programme else name)
 
     matrices = {}
     for key in mapping:
         matrices[mapping[key]] = []
 
     for project in projects:
-        key = mapping.get(project['Theme'], None)
+        name = project['Theme']
+        if by_year:
+            name = '{0}_{1}'.format(project['call year'], name)
+
+        key = mapping.get(name, None)
         if key is None:
             print "error: unknown theme ``{0}''".format(project['Theme'])
             continue
         matrices[key].append(project)
+
+    matrices = {key: value for key, value in matrices.iteritems() if len(value)}
 
     for key in matrices:
         print "Grouped {0} projects under ``{1}''".format(

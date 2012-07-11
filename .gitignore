@@ -1,7 +1,5 @@
 *.py[co]
-matrix_*.net
-matrix_*.csv
-matrix_*.txt
+out/
 projects_*.csv
 
 .idea

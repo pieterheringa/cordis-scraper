@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+#changes to include objective of FP7 around line 28; 155; 180;190;300;306;
 from gevent import monkey #the best thing to do is put this import in manage.py
 monkey.patch_socket()
 
